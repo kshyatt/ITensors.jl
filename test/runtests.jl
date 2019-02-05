@@ -21,6 +21,10 @@ using ITensors, Test
         "test_mpo.jl",
         "test_autompo.jl",
         "test_svd.jl",
+        "test_cucontract.jl",
+        "test_cuitensor.jl",
+        "test_cumps.jl",
+        "test_cumpo.jl",
     )
       println("Running $filename")
       include(filename)

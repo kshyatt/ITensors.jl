@@ -20,7 +20,7 @@ getindex(D::Diag,i::Int) = data(D)[i]
 convert(::Type{Diag{T}},D::Diag) where T = Diag{T}(data(D))
 
 # convert to Dense
-storage_dense(D::Diag{T},is::IndexSet) where T = Dense{T}(vec(storage_convert(Array,D,is)))
+storage_dense(D::Diag{T},is::IndexSet) where T = Dense{T, Array{T}}(vec(storage_convert(Array,D,is)))
 
 # convert to complex
 storage_complex(D::Diag{T}) where {T} = Diag{complex(T)}(complex(data(D)))
@@ -264,7 +264,7 @@ function contract(Cinds::IndexSet,
   # Create storage for output tensor
   # This needs to be filled with zeros, since in general
   # the output of Diag*Dense will be sparse
-  Cstore = Dense{SC}(0,prod(Cdims))
+  Cstore = Dense{SC, Vector{SC}}(zero(SC),prod(Cdims))
 
   # This seems unnecessary, and makes this function
   # non-generic. I think Dense should already store

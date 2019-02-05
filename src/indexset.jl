@@ -153,11 +153,7 @@ function _is_unique_index(j::Index,inds::T) where {T<:Tuple}
   return true
 end
 # Version taking one ITensor or IndexSet
-function _is_unique_index(j::Index,inds)
-  hasindex(inds,j) && return false
-  return true
-end
-
+_is_unique_index(j::Index,inds) = !hasindex(inds,j)
 
 """
 uniqueinds(Ais,Bis...)

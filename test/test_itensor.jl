@@ -14,25 +14,25 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
 
   @testset "Default" begin
     A = ITensor()
-    @test store(A) isa Dense{Nothing}
+    @test store(A) isa Dense{Nothing, Vector{Nothing}}
     @test isNull(A)
   end
 
   @testset "Undef with index" begin
     A = ITensor(undef, i)
-    @test store(A) isa Dense{Float64}
+    @test store(A) isa Dense{Float64, Vector{Float64}}
     @test !isNull(A)
   end
 
   @testset "Default with indices" begin
     A = ITensor(i,j)
-    @test store(A) isa Dense{Float64}
     @test !isNull(A)
+    @test store(A) isa Dense{Float64, Vector{Float64}}
   end
 
   @testset "Random" begin
     A = randomITensor(i,j)
-    @test store(A) isa Dense{Float64}
+    @test store(A) isa Dense{Float64, Vector{Float64}}
 
     @test ndims(A) == order(A) == 2 == length(inds(A))
     @test size(A) == dims(A) == (2,2)
@@ -49,7 +49,7 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
   @testset "From matrix" begin
     M = [1 2; 3 4]
     A = ITensor(M,i,j)
-    @test store(A) isa Dense{Float64}
+    @test store(A) isa Dense{Int64, Matrix{Int64}}
 
     @test M ≈ Matrix(A,i,j)
     @test M' ≈ Matrix(A,j,i)
@@ -62,6 +62,7 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
 
     M = [1 2 3; 4 5 6]
     @test_throws DimensionMismatch ITensor(M,i,j)
+    @test store(A) isa Dense{Int64, Matrix{Int64}}
   end
 
   @testset "To Matrix" begin
@@ -94,19 +95,19 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
   end
 
   @testset "Complex" begin
-    A = ITensor(Complex,i,j)
-    @test store(A) isa Dense{ComplexF64}
+    A = ITensor(ComplexF64,i,j)
+    @test store(A) isa Dense{ComplexF64, Vector{ComplexF64}}
   end
 
   @testset "Random complex" begin
-    A = randomITensor(Complex,i,j)
-    @test store(A) isa Dense{ComplexF64}
+    A = randomITensor(ComplexF32,i,j)
+    @test store(A) isa Dense{ComplexF32, Vector{ComplexF32}}
   end
 
   @testset "From complex matrix" begin
-    M = [1+2im 2; 3 4]
+    M = [1. + 2im 2.0; 3.0 4.0]
     A = ITensor(M,i,j)
-    @test store(A) isa Dense{ComplexF64}
+    @test store(A) isa Dense{ComplexF64, Matrix{ComplexF64}}
   end
 
 end
@@ -147,12 +148,12 @@ end
   B = ITensor(N,i,j)
   copyto!(A, B)
   @test A == B
-  @test data(store(A)) == vec(N)
+  @test data(store(A)) == N
   A = ITensor(M,i,j)
   B = ITensor(N,j,i)
   copyto!(A, B)
   @test A == B
-  @test data(store(A)) == vec(transpose(N))
+  @test data(store(A)) == transpose(N)
 end
 
 @testset "Unary -" begin
@@ -206,7 +207,7 @@ end
   A = ITensor(M,i,j)
   N = 2*M 
   B = ITensor(N,j,i)
-  @test data(store(mul!(B, A, 2.0))) == 2.0*vec(transpose(M))
+  @test data(store(mul!(B, A, 2.0))) == 2.0*transpose(M)
 end
 
 @testset "show" begin
@@ -215,7 +216,7 @@ end
   A = ITensor(a,i)
   s = split(sprint(show, A), '\n')
   @test s[1] == "ITensor ord=1 " * sprint(show, i) * " "
-  @test s[2] == "Dense{Float64}"
+  @test s[2] == "Dense{Float64,Array{Float64,1}}"
   @test s[3] == " 1.0"
   @test s[4] == " 2.0"
 end
@@ -419,12 +420,13 @@ end
     A = ITensor(SType,i,j,k)
     @test_throws ArgumentError scalar(A)
     # test the storage_scalar error throw
-    ds = Dense{Float64}(rand(10))
+    ds = Dense{Float64, Vector{Float64}}(rand(10))
     @test_throws ErrorException ITensor.storage_scalar(ds)
   end
   @testset "Test norm(ITensor)" begin
     A = randomITensor(SType,i,j,k)
-    @test norm(A)≈sqrt(scalar(dag(A)*A))
+    B = dag(A)*A
+    @test norm(A)≈sqrt(scalar(B))
   end
   @testset "Test add ITensors" begin
     A = randomITensor(SType,i,j,k)
@@ -454,7 +456,7 @@ end
         ii = Index(4)
         jj = Index(4)
         S = Diagonal(s)
-        T = ITensor(IndexSet(ii,jj),Dense{ComplexF64}(vec(U*S*Vh)))
+        T = ITensor(IndexSet(ii,jj),Dense{ComplexF64, Vector{ComplexF64}}(vec(U*S*Vh)))
         (U,S,Vh) = svd(T,ii;maxdim=2)
         @test norm((U*S)*Vh-T)≈sqrt(s[3]^2+s[4]^2)
     end
@@ -488,4 +490,23 @@ end
   end # End ITensor factorization testset
 end # End Dense storage test
 
+@testset "Converting Real and Complex Storage" begin
+
+  @testset "Add Real and Complex" begin
+    i = Index(2,"i")
+    j = Index(2,"j")
+    TC = randomITensor(ComplexF64,i,j)
+    TR = randomITensor(Float64,i,j)
+
+    S1 = TC+TR
+    S2 = TR+TC
+    @test typeof(S1.store) == Dense{ComplexF64, Vector{ComplexF64}}
+    @test typeof(S2.store) == Dense{ComplexF64, Vector{ComplexF64}}
+    for ii=1:dim(i),jj=1:dim(j)
+      @test S1[i(ii),j(jj)] ≈ TC[i(ii),j(jj)]+TR[i(ii),j(jj)]
+      @test S2[i(ii),j(jj)] ≈ TC[i(ii),j(jj)]+TR[i(ii),j(jj)]
+    end
+  end
+
+end
 

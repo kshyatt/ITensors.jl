@@ -31,31 +31,31 @@ end
 # Dense ITensor constructors
 #
 
-ITensor() = ITensor(IndexSet(),Dense{Nothing}())
+ITensor() = ITensor(IndexSet(),Dense{Nothing,Vector{Nothing}}())
 ITensor(is::IndexSet) = ITensor(Float64,is...)
 ITensor(inds::Index...) = ITensor(IndexSet(inds...))
 
-function ITensor(::Type{T},
-                 inds::IndexSet) where {T<:Number}
-  return ITensor(inds,Dense{float(T)}(zero(float(T)),dim(inds)))
+# ITensor c-tors
+function ITensor(::Type{T},inds::IndexSet) where {T<:Number}
+    return ITensor(inds,Dense{T, Vector{T}}(dim(inds)))
 end
 ITensor(::Type{T},inds::Index...) where {T<:Number} = ITensor(T,IndexSet(inds...))
 
 function ITensor(::UndefInitializer,
                  inds::IndexSet)
-  return ITensor(inds,Dense{Float64}(Vector{Float64}(undef,dim(inds))))
+    return ITensor(inds,Dense{Float64, Vector{Float64}}(Vector{Float64}(undef,dim(inds))))
 end
 ITensor(x::UndefInitializer,inds::Index...) = ITensor(x,IndexSet(inds...))
 
 function ITensor(x::S,inds::IndexSet) where {S<:Number}
-  return ITensor(inds,Dense{float(S)}(float(x),dim(inds)))
+    return ITensor(inds,Dense{S, Vector{S}}(x,dim(inds)))
 end
 ITensor(x::S,inds::Index...) where {S<:Number} = ITensor(x,IndexSet(inds...))
 
 #TODO: check that the size of the Array matches the Index dimensions
 function ITensor(A::Array{S},inds::IndexSet) where {S<:Number}
     length(A) ≠ dim(inds) && throw(DimensionMismatch("In ITensor(Array,IndexSet), length of Array ($(length(A))) must match total dimension of IndexSet ($(dim(inds)))"))
-  return ITensor(inds,Dense{float(S)}(float(vec(A))))
+    return ITensor(inds,Dense{S, typeof(A)}(A))
 end
 ITensor(A::Array{S},inds::Index...) where {S<:Number} = ITensor(A,IndexSet(inds...))
 
@@ -170,13 +170,14 @@ Convert to the complex version of the storage.
 """
 Base.complex(T::ITensor) = ITensor(inds(T),storage_complex(store(T)))
 
-inds(T::ITensor) = T.inds
-store(T::ITensor) = T.store
-
 # This constructor allows many IndexSet
 # set operations to work with ITensors
 IndexSet(T::ITensor) = inds(T)
 
+isNull(T::ITensor) = (typeof(store(T)) == Dense{Nothing} || dims(T) == ())
+
+inds(T::ITensor) = T.inds
+store(T::ITensor) = T.store
 eltype(T::ITensor) = eltype(store(T))
 
 """
@@ -204,11 +205,10 @@ size(A::ITensor) = dims(inds(A))
 size(A::ITensor, d::Int) = d in 1:ndims(A) ? dim(inds(A)[d]) :
   d>0 ? 1 : error("arraysize: dimension out of range")
 
-isNull(T::ITensor) = (store(T) isa Dense{Nothing})
-
 copy(T::ITensor) = ITensor(copy(inds(T)),copy(store(T)))
 
 Array(T::ITensor) = storage_convert(Array,store(T),inds(T))
+CuArray(T::ITensor) = storage_convert(CuArray,store(T),inds(T))
 
 Array(T::ITensor,ninds::Index...) = storage_convert(Array,store(T),inds(T),IndexSet(ninds))
 
@@ -364,18 +364,21 @@ function permute(T::ITensor,permTinds)
   storage_permute!(permTstore,permTis,store(T),inds(T))
   return ITensor(permTis,permTstore)
 end
-permute(T::ITensor,inds::Index...) = permute(T,IndexSet(inds...))
+permute(T::ITensor,new_inds::Index...) = permute(T,IndexSet(new_inds...))
 
+#TODO: improve these using a storage_mult call
 function *(A::ITensor,x::Number)
-    storeB = storage_mult(store(A), x)
-    return ITensor(inds(A),storeB)
+    Astore = store(A)
+    Astore = Astore*x
+    return ITensor(inds(A), Astore)
 end
 *(x::Number,A::ITensor) = A*x
-#TODO: make a proper element-wise division
-/(A::ITensor,x::Number) = A*(1.0/x)
-
+function /(A::ITensor,x::Number)
+    ITensor(inds(A), (1.0/x)*store(A))
+end
 -(A::ITensor) = -one(eltype(A))*A
 function +(A::ITensor,B::ITensor)
+  #A==B && return 2*A
   C = copy(A)
   add!(C,B)
   return C
@@ -392,6 +395,8 @@ end
 #We can move the logic of getting the integer labels,
 #etc. since they are generic for all storage types
 function *(A::ITensor,B::ITensor)
+  #TODO: Add special case of A==B
+  #A==B && return ITensor(norm(A)^2)
   (Cis,Cstore) = storage_contract(store(A),inds(A),store(B),inds(B))
   C = ITensor(Cis,Cstore)
   if warnTensorOrder > 0 && order(C) >= warnTensorOrder

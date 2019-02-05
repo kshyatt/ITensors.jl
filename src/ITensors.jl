@@ -20,6 +20,7 @@ import Base.adjoint,
        Base.isless,
        Base.iterate,
        Base.length,
+       Base.ndims,
        Base.push!,
        Base.setindex!,
        Base.eachindex,
@@ -29,6 +30,7 @@ import Base.adjoint,
        Base.similar,
        Base.size,
        Base.ndims,
+       Base.Matrix,
        Base.!=,
        Base.+,
        Base.-,
@@ -87,5 +89,11 @@ include("physics/sitesets/spinhalf.jl")
 include("physics/sitesets/spinone.jl")
 include("physics/sitesets/electron.jl")
 include("physics/sitesets/tj.jl")
+
+include("CuITensors.jl")
+export cuITensor,
+       randomCuITensor,
+       cuMPS,
+       randomCuMPS
 
 end # module

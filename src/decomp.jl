@@ -11,7 +11,6 @@ function truncate!(P::Vector{Float64};
   cutoff::Float64 = max(get(kwargs,:cutoff,0.0), 0.0)
   absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
-
   origm = length(P)
   docut = 0.0
 
@@ -59,14 +58,16 @@ function truncate!(P::Vector{Float64};
       truncerr += P[n]
       n -= 1
     end
-
-    truncerr /= scale
+    if scale==0.0
+      truncerr = 0.0
+    else
+      truncerr /= scale
+    end
   end
 
   if n < 1
     n = 1
   end
-
   if n < origm
     docut = (P[n]+P[n+1])/2
     if abs(P[n]-P[n+1]) < 1E-3*P[n]
@@ -99,16 +100,15 @@ end
 
 import LinearAlgebra.qr
 function qr(A::ITensor,
-            Linds...)
+            Linds...; kwargs...)
   A,Lis,Ris = _permute_for_factorize(A,Linds...)
-  Qis,Qstore,Pis,Pstore = storage_qr(store(A),Lis,Ris)
+  Qis,Qstore,Pis,Pstore = storage_qr(store(A),Lis,Ris; kwargs...)
   Q = ITensor(Qis,Qstore)
   R = ITensor(Pis,Pstore)
   return Q,R,commonindex(Q,R)
 end
 
-function polar(A::ITensor,
-               Linds...)
+function polar(A::ITensor, Linds...)
   A,Lis,Ris = _permute_for_factorize(A,Linds...)
   Qis,Qstore,Pis,Pstore = storage_polar(store(A),Lis,Ris)
   Q = ITensor(Qis,Qstore)

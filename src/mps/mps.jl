@@ -160,6 +160,13 @@ function replacesites!(M::MPS,sites)
   return M
 end
 
+maxDim(M::MPS) = maximum([maxDim(inds(T)) for T in tensors(M)])
+
+"""
+inner(psi::MPS, phi::MPS)
+
+Compute <psi|phi>
+"""
 function inner(M1::MPS, M2::MPS)::Number
   N = length(M1)
   if length(M2) != N
@@ -190,5 +197,3 @@ inner(psi::MPS, phi::MPS)
 
 Compute <psi|phi>
 """ inner
-
-

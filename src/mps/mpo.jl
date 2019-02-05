@@ -204,7 +204,6 @@ function linkindex(M::MPO,j::Integer)
   return li
 end
 
-
 """
 inner(y::MPS, A::MPO, x::MPS)
 
@@ -228,15 +227,15 @@ function inner(y::MPS,
   return O[]
 end
 
-function plussers(left_ind::Index, right_ind::Index, sum_ind::Index)
+function plussers(::Type{T}, left_ind::Index, right_ind::Index, sum_ind::Index) where T <: Array
     #if dir(left_ind) == dir(right_ind) == Neither
         total_dim    = dim(left_ind) + dim(right_ind)
         total_dim    = max(total_dim, 1)
         left_tensor  = δ(left_ind, sum_ind)
-        right_tensor = ITensor(right_ind, sum_ind)
-        for i in 1:dim(right_ind)
-            right_tensor[right_ind(i), sum_ind(dim(left_ind) + i)] = 1
-        end
+        right_data   = zeros(dim(right_ind), dim(sum_ind))
+        rdi = diagind(right_data, dim(left_ind))
+        right_data[rdi] = ones(Float64, length(rdi))
+        right_tensor = ITensor(right_data, right_ind, sum_ind)
         return left_tensor, right_tensor
     #else # tensors have QNs
     #    throw(ArgumentError("support for adding MPOs with defined quantum numbers not implemented yet."))
@@ -252,16 +251,16 @@ function sum(A::T, B::T; kwargs...) where {T <: Union{MPS, MPO}}
     rand_plev = 13124
     lAs = [linkindex(A, i) for i in 1:n-1]
     prime!(A, rand_plev, "Link")
-
+    store_T = typeof(data(store(A[1])))
     first  = fill(ITensor(), n)
     second = fill(ITensor(), n)
     for i in 1:n-1
         lA = linkindex(A, i)
         lB = linkindex(B, i)
         r  = Index(dim(lA) + dim(lB), tags(lA))
-        f, s = plussers(lA, lB, r)
-        first[i]  = f
-        second[i] = s
+        f, s = plussers(store_T, lA, lB, r)
+        first[i]  = deepcopy(f)
+        second[i] = deepcopy(s)
     end
     C[1] = A[1] * first[1] + B[1] * second[1]
     for i in 2:n-1
@@ -302,7 +301,9 @@ function densityMatrixApplyMPO(A::MPO, psi::MPS; kwargs...)::MPS
         A_c[j] = setprime(A_c[j], pl, unique_site_ind)
     end
     E = Vector{ITensor}(undef, n-1)
-    E[1] = psi[1]*A[1]*A_c[1]*psi_c[1]
+    E[1] = A[1] * A_c[1]
+    E[1] = E[1] * psi[1]
+    E[1] = E[1] * psi_c[1]
     for j in 2:n-1
         E[j] = E[j-1]*psi[j]*A[j]*A_c[j]*psi_c[j]
     end
@@ -363,8 +364,16 @@ function nmultMPO(A::MPO, B::MPO; kwargs...)::MPO
         replaceindex!(res[i+1], ci, new_ci)
         @assert commonindex(res[i], res[i+1]) != commonindex(A[i], A[i+1])
     end
-    sites_A = [setdiff(findinds(x, "Site"), findindex(y, "Site"))[1] for (x,y) in zip(tensors(A_), tensors(B_))]
-    sites_B = [setdiff(findinds(x, "Site"), findindex(y, "Site"))[1] for (x,y) in zip(tensors(B_), tensors(A_))]
+    sites_A = Index[]
+    sites_B = Index[]
+    for (AA, BB) in zip(tensors(A_), tensors(B_))
+        sda = setdiff(findinds(AA, "Site"), findinds(BB, "Site"))
+        push!(sites_A, sda[1])
+        sdb = setdiff(findinds(BB, "Site"), findinds(AA, "Site"))
+        push!(sites_B, sdb[1])
+    end
+    #sites_A = [setdiff(findinds(x, "Site"), findindex(y, "Site")) for (x,y) in zip(tensors(A_), tensors(B_))]
+    #sites_B = [setdiff(findinds(x, "Site"), findindex(y, "Site")) for (x,y) in zip(tensors(B_), tensors(A_))]
     res[1] = ITensor(sites_A[1], sites_B[1], commonindex(res[1], res[2]))
     for i in 1:N-2
         if i == 1
@@ -374,10 +383,10 @@ function nmultMPO(A::MPO, B::MPO; kwargs...)::MPO
         end
         lA = commonindex(A_[i], A_[i+1])
         lB = commonindex(B_[i], B_[i+1])
-        nfork = ITensor(lA, lB, commonindex(res[i], res[i+1]))
-        res[i], nfork = factorize(mapprime(clust,2,1), inds(res[i]), dir="fromleft", tags=tags(lA), cutoff=cutoff, maxdim=maxdim, mindim=mindim)
-        mid = dag(commonindex(res[i], nfork))
-        res[i+1] = ITensor(mid, sites_A[i+1], sites_B[i+1], commonindex(res[i+1], res[i+2]))
+        nfork         = ITensor(lA, lB, commonindex(res[i], res[i+1]))
+        res[i], nfork = factorize(clust, inds(res[i]), dir="fromleft", tags=tags(lA), cutoff=cutoff, maxdim=maxdim, mindim=mindim)
+        mid           = dag(commonindex(res[i], nfork))
+        res[i+1]      = ITensor(mid, sites_A[i+1], sites_B[i+1], commonindex(res[i+1], res[i+2]))
     end
     clust = nfork * A_[N-1] * B_[N-1]
     nfork = clust * A_[N] * B_[N]
@@ -388,7 +397,7 @@ function nmultMPO(A::MPO, B::MPO; kwargs...)::MPO
     U, V, ci = factorize(nfork,Lis,dir="fromright",cutoff=cutoff,which_factorization="svd",tags="Link,n=$(N-1)",maxdim=maxdim,mindim=mindim)
     res[N-1] = U
     res[N] = V
-    truncate!(res;kwargs...)
+    truncate!(res; kwargs...)
     for i in 1:N
         res[i] = mapprime(res[i], 2, 1)
     end
@@ -433,7 +442,7 @@ function truncate!(M::Union{MPS,MPO}; kwargs...)
 
   # Left-orthogonalize all tensors to make
   # truncations controlled
-  orthogonalize!(M,N)
+  orthogonalize!(M,N; kwargs...)
 
   # Perform truncations in a right-to-left sweep
   for j in reverse(2:N)

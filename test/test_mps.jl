@@ -84,10 +84,10 @@ using ITensors,
   end
 
   @testset "add MPS" begin
-    psi = randomMPS(sites)
-    phi = similar(psi)
+    psi    = randomMPS(sites)
+    phi    = similar(psi)
     phi.A_ = deepcopy(psi.A_)
-    xi = sum(psi, phi)
+    xi     = sum(psi, phi)
     @test inner(xi, xi) ≈ 4.0 * inner(psi, psi) 
   end
 

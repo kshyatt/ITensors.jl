@@ -63,11 +63,11 @@ function storage_contract(CSstore::CombinerStorage,
           ni += 1
           Nis[i] = dis[j]
           i += 1
+          ni += 1
         end
       end
-
-      ddata = vec(permutedims(reshape(data(Dstore), dims(dis)), invperm(P)))
-      Dstore = Dense{eltype(Dstore)}(ddata)
+      rsD = permutedims(reshape(data(Dstore), dims(dis)), invperm(P))
+      Dstore = Dense{eltype(Dstore),typeof(data(Dstore))}(vec(rsD))
     end
     return Nis, Dstore
   end

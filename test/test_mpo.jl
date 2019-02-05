@@ -80,9 +80,12 @@ using ITensors,
     L = randomMPO(sites)
     @test maxLinkDim(K) == 1
     @test maxLinkDim(L) == 1
+    @show K
+    @show L
     KL = nmultMPO(K, L, maxdim=1)
+    @show KL
     psi_kl_out = applyMPO(K, applyMPO(L, psi, maxdim=1), maxdim=1)
-    @test inner(psi,KL,psi) ≈ inner(psi, psi_kl_out) atol=5e-3
+    @test inner(psi, KL, psi) ≈ inner(psi, psi_kl_out) atol=5e-3
 
     badsites = SiteSet(N+1,2)
     badL = randomMPO(badsites)

@@ -31,7 +31,9 @@ function orthogonalize!(q::ITensor,V,ni)
   for k=1:ni
     Vq0k = dot(V[k],q0)
     #q += -Vq0k*V[k]
-    add!(q,-Vq0k,V[k])
+    if( abs(Vq0k) < 1e-12 )
+        add!(q,-Vq0k,V[k])
+    end
   end
   qnrm = norm(q)
   if qnrm < 1E-10 #orthog failure, try randomizing
@@ -47,7 +49,6 @@ function davidson(A,
                   kwargs...)::Tuple{Float64,ITensor}
 
   phi = copy(phi0)
-
   maxiter = get(kwargs,:maxiter,2)
   miniter = get(kwargs,:maxiter,1)
   errgoal = get(kwargs,:errgoal,1E-14)
@@ -65,17 +66,16 @@ function davidson(A,
   maxsize = size(A)[1]
   actual_maxiter = min(maxiter,maxsize-1)
 
-  if dim(inds(phi)) != maxsize
-    error("linear size of A and dimension of phi should match in davidson")
-  end
+  #if dim(inds(phi)) != maxsize
+  #  error("linear size of A and dimension of phi should match in davidson")
+  #end
 
   V = ITensor[copy(phi)]
-  AV = ITensor[A(phi)]
+  AV = ITensor[noprime(A*phi)]
 
   last_lambda = NaN
   lambda = dot(V[1],AV[1])
-  q = AV[1] - lambda*V[1];
-
+  q = AV[1] - lambda*V[1]
   M = fill(lambda,(1,1))
 
   for ni=1:actual_maxiter
@@ -98,8 +98,7 @@ function davidson(A,
     end
 
     push!(V,copy(q))
-    push!(AV,A(q))
-
+    push!(AV,noprime(A*q))
     newM = fill(0.0,(ni+1,ni+1))
     newM[1:ni,1:ni] = M
     for k=1:ni+1
@@ -111,7 +110,6 @@ function davidson(A,
     lambda = get_vecs!((phi,q),M,V,AV,ni+1)
 
   end #for ni=1:actual_maxiter+1
-
   return lambda,phi
 
 end
