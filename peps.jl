@@ -85,19 +85,19 @@ function combine(AA::ITensor, Aorig::ITensor, Anext::ITensor, tags::String)
     return cmb, AA
 end
 
-function buildEdgeEnvironment(A::PEPS, H, left_H_terms, side::Symbol, col::Int; kwargs...)::Payload
+function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Payload
 
 end
 
-function buildNextEnvironment(A::PEPS, prev_Env::Payload, H, side::Symbol, col::Int; kwargs...)::Payload
+function buildNextEnvironment(A::PEPS, prev_Env::Payload, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Payload
 
 end
 
-function buildNewVerticals()
+function buildNewVerticals(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H)
 
 end
 
-function buildNewFields()
+function buildNewFields(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H)
 
 end
 
@@ -133,33 +133,51 @@ function connectDanglingBonds()
 end
 
 function buildLs(A::PEPS, H; kwargs...)
-    # put combiners in
     Nx, Ny = size(A)
+    previous_combiners = Vector{ITensor}(undef, Ny)
+    next_combiners = Vector{ITensor}(undef, Ny)
     Ls = Vector{Payload}(undef, Nx)
     start_col::Int = get(kwargs, :start_col, 1)
     if start_col == 1
         left_H_terms = directionalH(H[1], Horizontal)
-        Ls[1] = buildEdgeEnvironment(A, H, left_H_terms, :left, 1, kwargs...)
+        Ls[1] = buildEdgeEnvironment(A, H, left_H_terms, previous_combiners, :left, 1, kwargs...)
+    else
+        if start_col - 1 > 1
+            for row in 1:Ny
+                previous_combiners[row] = reconnect( )
+                #prev_cmb_r[row] = reconnect(commonIndex(As[start_col][row], As[prev_col][row]), Ls[prev_col].I(row+1));
+            end
+        end
     end
     loop_col = start_col == 1 ? 2 : start_col
     for col in loop_col:Nx-1
-        Ls[col] = buildNextEnvironment(A, Ls[col-1], H, :left, col, kwargs...)
+        Ls[col] = buildNextEnvironment(A, Ls[col-1], H, previous_combiners, next_combiners, :left, col, kwargs...)
+        previous_combiners = deepcopy(next_combiners)
     end
     return Ls
 end
 
 function buildRs(A::PEPS, H; kwargs...)
-    # put combiners in
     Nx, Ny = size(A)
+    previous_combiners = Vector{ITensor}(undef, Ny)
+    next_combiners = Vector{ITensor}(undef, Ny)
     start_col::Int = get(kwargs, :start_col, Nx)
     Rs = Vector{Payload}(undef, Nx)
     if start_col == Nx
         right_H_terms = directionalH(H[Nx-1], Horizontal)
-        Rs[Nx] = buildEdgeEnvironment(A, H, right_H_terms, :right, Nx, kwargs...)
+        Rs[Nx] = buildEdgeEnvironment(A, H, right_H_terms, previous_combiners, :right, Nx, kwargs...)
+    else
+        if start_col + 1 < Nx
+            for row in 1:Ny
+                previous_combiners[row] = reconnect( )
+                #prev_cmb_l[row] = reconnect(commonIndex(As[prev_col][row], As[start_col][row]), Rs[prev_col].I(row+1));
+            end
+        end
     end
     loop_col = start_col == Nx ? Nx-1 : start_col
     for col in reverse(2:loop_col)
-        Rs[col] = buildNextEnvironment(A, Rs[col+1], H, :right, col, kwargs...)
+        Rs[col] = buildNextEnvironment(A, Rs[col+1], H, previous_combiners, next_combiners, :right, col, kwargs...)
+        previous_combiners = deepcopy(next_combiners)
     end
     return Rs
 end
