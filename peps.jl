@@ -1,4 +1,4 @@
-using ITensors
+using ITensors, Random
 
 mutable struct PEPS
     Nx::Int
@@ -7,19 +7,14 @@ mutable struct PEPS
 
     PEPS() = new(0, 0, Matrix{ITensor}(),0,0)
 
-    function PEPS(Nx::Int, Ny::Int 
-                  A::Matrix{ITensor}) 
-        new(Nx, Ny, A)
-    end
-    function PEPS(sites::SiteSet, lattice::Lattice)
-        Nx = count(unique(x->x.x1, lattice)) 
-        Ny = count(unique(x->x.x2, lattice))
+    PEPS(Nx::Int, Ny::Int, A::Matrix{ITensor}) = new(Nx, Ny, A)
+    function PEPS(sites::SiteSet, lattice::Lattice, Nx::Int, Ny::Int)
         p  = Matrix{ITensor}(undef, Nx, Ny)
         right_links = [ Index(1, "Link,c$i,r$j,r") for i in 1:Nx, j in 1:Ny ]
         up_links    = [ Index(1, "Link,c$i,r$j,u") for i in 1:Nx, j in 1:Ny ]
         @inbounds for ii in eachindex(sites)
-            row = div(ii, Nx) + 1
-            col = mod(ii, Nx) + 1
+            row = div(ii-1, Nx) + 1
+            col = mod(ii-1, Nx) + 1
             s = sites[ii]
             if 1 < row < Ny && 1 < col < Nx 
                 p[row, col] = ITensor(right_links[row, col], up_links[row, col], right_links[row, col-1], up_links[row-1, col], s)
@@ -45,26 +40,26 @@ mutable struct PEPS
     end
 end
 
-function randomPEPS(sites, lattice)
-    A = PEPS(sites)
-    @inbounds for i ∈ eachindex(sites)
-        row = div(ii, Nx) + 1
-        col = mod(ii, Nx) + 1
-        randn!(A[row, col])
-        normalize!(A[row, col])
+function randomPEPS(sites, Nx::Int, Ny::Int)
+    lattice = squareLattice(Nx,Ny,yperiodic=false)
+    A = PEPS(sites, lattice, Nx, Ny)
+    @inbounds for ii ∈ eachindex(sites)
+        randn!(A[ii])
+        normalize!(A[ii])
     end
     return A
 end
 
 tensors(A::PEPS) = A.A_
-size(A::PEPS) = (A.Nx, A.Ny)
-getindex(A::PEPS, i::Integer, j::Integer) = getindex(tensors(A), i, j)
-setindex!(A::PEPS, val::ITensor, i::Integer, j::Integer) = setindex!(tensors(A), T, i, j)
+Base.size(A::PEPS) = (A.Ny, A.Nx)
+Base.getindex(A::PEPS, i::Integer, j::Integer) = getindex(tensors(A), i, j)
+Base.getindex(A::PEPS, i::Integer) = getindex(tensors(A), i)
+Base.setindex!(A::PEPS, val::ITensor, i::Integer, j::Integer) = setindex!(tensors(A), T, i, j)
 
-copy(A::PEPS)    = PEPS(A.Nx, A.Ny, copy(tensors(A)))
-similar(A::PEPS) = PEPS(A.Nx, A.Ny, similar(tensors(A)))
+Base.copy(A::PEPS)    = PEPS(A.Nx, A.Ny, copy(tensors(A)))
+Base.similar(A::PEPS) = PEPS(A.Nx, A.Ny, similar(tensors(A)))
 
-function show(io::IO, A::PEPS)
+function Base.show(io::IO, A::PEPS)
   print(io,"PEPS")
   (size(A)[1] > 0 && size(A)[2] > 0) && print(io,"\n")
   @inbounds for i in 1:A.Nx, j in 1:A.Ny
@@ -78,8 +73,78 @@ struct Environments
     InProgress::Matrix{ITensor}
 end
 
+@enum Op_Type Field=0 Vertical=1 Horizontal=2
+struct Operator
+    sites::Vector{Pair{Int,Int}}
+    ops::Vector{ITensor}
+    site_ind::Index
+    dir::Op_Type
+end
+
+getDirectional(ops::Vector{Operator}, dir::Op_Type) = collect(filter(x->x.dir==dir, ops))
+
+function spinI(s::Index)::ITensor
+    I = ITensor(s, s')
+    I[s(1), s'(1)] = 1.0
+    I[s(2), s'(2)] = 1.0
+    return I
+end
+
+function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
+    s = Index(2, "Site,SpinInd")
+    Z = ITensor(s, s')
+    Z[s(1), s'(1)] = 0.5
+    Z[s(2), s'(2)] = -0.5
+    Ident = spinI(s)
+    P = ITensor(s, s')
+    M = ITensor(s, s')
+    P[s(1), s'(2)] = 1.0
+    M[s(2), s'(1)] = 1.0
+    H = Matrix{Vector{Operator}}(undef, Ny, Nx)
+    for col in 1:Nx, row in 1:Ny
+        H[row, col] = Vector{Operator}()
+        if row < Ny
+            op_a = 0.5 * P
+            op_b = copy(M)
+            sites = [row=>col, row+1=>col]
+            push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
+
+            op_a = 0.5 * M
+            op_b = copy(P)
+            sites = [row=>col, row+1=>col]
+            push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
+
+            if J != 0.0
+                op_a = J * Z
+                op_b = copy(Z)
+                sites = [row=>col, row+1=>col]
+                push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
+            end
+        end
+        if col < Nx
+            op_a = 0.5 * P
+            op_b = copy(M)
+            sites = [row=>col, row=>col+1]
+            push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
+
+            op_a = 0.5 * M
+            op_b = copy(P)
+            sites = [row=>col, row=>col+1]
+            push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
+
+            if J != 0.0
+                op_a = J * Z
+                op_b = copy(Z)
+                sites = [row=>col, row=>col+1]
+                push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
+            end
+        end
+    end
+    return H
+end
+
 function combine(AA::ITensor, Aorig::ITensor, Anext::ITensor, tags::String)
-    ci = commonIndex(Aorig, Anext)
+    ci = commonindex(Aorig, Anext)
     cmb, combined_ind = combiner(IndexSet(ci, prime(ci)), tags=tags)
     AA *= cmb
     return cmb, AA
@@ -92,7 +157,7 @@ function reconnect(combiner_ind::Index, environment::ITensor)
     return new_combiner*combiner_transfer
 end
 
-function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Payload
+function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
     Nx, Ny = size(A)
     up_combiners = Vector{ITensor}(undef, Ny-1)
     fake_next_combiners = Vector{ITensor}(undef, Ny)
@@ -119,10 +184,10 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
     for side_term in 1:length(side_H_terms)
         in_progress[1:Ny, side_term] = generateEdgeDanglingBonds(A, up_combiners, side_H_terms[side_term], side, col)
     end
-    return Payload(I_mps, H_overall, in_progress)
+    return Environments(I_mps, H_overall, in_progress)
 end
 
-function buildNextEnvironment(A::PEPS, prev_Env::Payload, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Payload
+function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
     Nx, Ny = size(A)
     working_combiner = Vector{ITensor}(undef, Ny)
     up_combiners = Vector{ITensor}(undef, Ny-1)
@@ -154,7 +219,7 @@ function buildNextEnvironment(A::PEPS, prev_Env::Payload, H, previous_combiners:
     for side_term in 1:length(gen_H_terms)
         in_progress[1:Ny, side_term] = generateNextDanglingBonds(A, up_combiners, gen_H_terms[side_term], prev_Env.I, side, col, kwargs...)
     end
-    return Payload(I_mpo, H_overall, in_progress)
+    return Environments(I_mpo, H_overall, in_progress)
 end
 
 function buildNewVerticals(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H, col::Int)::MPO
@@ -183,7 +248,7 @@ end
 
 function buildNewI(A::PEPS, col::Int, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, side::Symbol)::MPO
     Nx, Ny = size(A)
-    MPO Iapp(Ny)
+    Iapp = MPO(Ny)
     next_col = side == :left ? col + 1 : col - 1 # side is handedness of environment
     @inbounds for row in 1:Ny
         AA = A[row, col] * prime(dag(A[row, col]), "Link")
@@ -263,17 +328,13 @@ function buildLs(A::PEPS, H; kwargs...)
     Nx, Ny = size(A)
     previous_combiners = Vector{ITensor}(undef, Ny)
     next_combiners = Vector{ITensor}(undef, Ny)
-    Ls = Vector{Payload}(undef, Nx)
+    Ls = Vector{Environments}(undef, Nx)
     start_col::Int = get(kwargs, :start_col, 1)
     if start_col == 1
-        left_H_terms = directionalH(H[1], Horizontal)
+        left_H_terms = getDirectional(H[1], Horizontal)
         Ls[1] = buildEdgeEnvironment(A, H, left_H_terms, previous_combiners, :left, 1, kwargs...)
-    else
-        if start_col - 1 > 1
-            for row in 1:Ny
-                previous_combiners[row] = reconnect(commonIndex(As[row, start_col], As[row, start_col - 1]), Ls[start_col-1].I[row])
-            end
-        end
+    elseif start_col - 1 > 1
+        previous_combiners = [reconnect(commonindex(As[row, start_col], As[row, start_col - 1]), Ls[start_col-1].I[row]) for row in 1:Ny]
     end
     loop_col = start_col == 1 ? 2 : start_col
     for col in loop_col:Nx-1
@@ -288,16 +349,12 @@ function buildRs(A::PEPS, H; kwargs...)
     previous_combiners = Vector{ITensor}(undef, Ny)
     next_combiners = Vector{ITensor}(undef, Ny)
     start_col::Int = get(kwargs, :start_col, Nx)
-    Rs = Vector{Payload}(undef, Nx)
+    Rs = Vector{Environments}(undef, Nx)
     if start_col == Nx
-        right_H_terms = directionalH(H[Nx-1], Horizontal)
+        right_H_terms = getDirectional(H[Nx-1], Horizontal)
         Rs[Nx] = buildEdgeEnvironment(A, H, right_H_terms, previous_combiners, :right, Nx, kwargs...)
-    else
-        if start_col + 1 < Nx
-            for row in 1:Ny
-                previous_combiners[row] = reconnect(commonIndex(As[row, start_col], As[row, start_col + 1]), Rs[start_col+1].I[row])
-            end
-        end
+    elseif start_col + 1 < Nx
+        previous_combiners = [reconnect(commonindex(As[row, start_col], As[row, start_col + 1]), Rs[start_col+1].I[row]) for row in 1:Ny]
     end
     loop_col = start_col == Nx ? Nx-1 : start_col
     for col in reverse(2:loop_col)
@@ -306,3 +363,12 @@ function buildRs(A::PEPS, H; kwargs...)
     end
     return Rs
 end
+
+Nx = 4
+Ny = 4
+J  = 1.0
+sites = spinHalfSites(Nx*Ny)
+A = randomPEPS(sites, Nx, Ny)
+H = makeH_XXZ(Nx, Ny, J)
+Ls = buildLs(A, H)
+Rs = buildRs(A, H)
