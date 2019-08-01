@@ -104,37 +104,37 @@ function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
     for col in 1:Nx, row in 1:Ny
         H[row, col] = Vector{Operator}()
         if row < Ny
-            op_a = 0.5 * P
-            op_b = copy(M)
+            op_a  = 0.5 * P
+            op_b  = copy(M)
             sites = [row=>col, row+1=>col]
             push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
 
-            op_a = 0.5 * M
-            op_b = copy(P)
+            op_a  = 0.5 * M
+            op_b  = copy(P)
             sites = [row=>col, row+1=>col]
             push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
 
             if J != 0.0
-                op_a = J * Z
-                op_b = copy(Z)
+                op_a  = J * Z
+                op_b  = copy(Z)
                 sites = [row=>col, row+1=>col]
                 push!(H[row, col], Operator(sites, [op_a; op_b], s, Vertical))
             end
         end
         if col < Nx
-            op_a = 0.5 * P
-            op_b = copy(M)
+            op_a  = 0.5 * P
+            op_b  = copy(M)
             sites = [row=>col, row=>col+1]
             push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
 
-            op_a = 0.5 * M
-            op_b = copy(P)
+            op_a  = 0.5 * M
+            op_b  = copy(P)
             sites = [row=>col, row=>col+1]
             push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
 
             if J != 0.0
-                op_a = J * Z
-                op_b = copy(Z)
+                op_a  = J * Z
+                op_b  = copy(Z)
                 sites = [row=>col, row=>col+1]
                 push!(H[row, col], Operator(sites, [op_a; op_b], s, Horizontal))
             end
@@ -144,21 +144,21 @@ function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
 end
 
 function combine(AA::ITensor, Aorig::ITensor, Anext::ITensor, tags::String)
-    ci = commonindex(Aorig, Anext)
+    ci                = commonindex(Aorig, Anext)
     cmb, combined_ind = combiner(IndexSet(ci, prime(ci)), tags=tags)
-    AA *= cmb
+    AA               *= cmb
     return cmb, AA
 end
 
 function reconnect(combiner_ind::Index, environment::ITensor)
-    environment_combiner = findIndex(environment, "Site")
+    environment_combiner       = findIndex(environment, "Site")
     new_combiner, combined_ind = combiner(IndexSet(combiner_ind, prime(combiner_ind)), tags="Site")
-    combiner_transfer = δ(combined_ind, environment_combiner)
+    combiner_transfer          = δ(combined_ind, environment_combiner)
     return new_combiner*combiner_transfer
 end
 
 function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     up_combiners = Vector{ITensor}(undef, Ny-1)
     fake_next_combiners = Vector{ITensor}(undef, Ny)
     fake_prev_combiners = Vector{ITensor}(undef, Ny)
@@ -168,9 +168,9 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
 
     field_H_terms = getDirectional(H[col], Field)
     vert_H_terms  = getDirectional(H[col], Vertical)
-    vHs = [buildNewVerticals(A, fake_prev_combiners, fake_next_combiners, up_combiners, vert_H_terms[vert_op], col, kwargs...) for vert_op in 1:length(vert_H_terms)]
-    fHs = [buildNewFields(A, fake_prev_combiners, fake_next_combiners, up_combiners, field_H_terms[field_op], col, kwargs...) for field_op in 1:length(field_H_terms)]
-    Hs  = MPS[MPS(Ny, tensors(H_term), 0, Ny+1) for H_term in vcat(vHs, fHs)]
+    vHs           = [buildNewVerticals(A, fake_prev_combiners, fake_next_combiners, up_combiners, vert_H_terms[vert_op], col, kwargs...) for vert_op in 1:length(vert_H_terms)]
+    fHs           = [buildNewFields(A, fake_prev_combiners, fake_next_combiners, up_combiners, field_H_terms[field_op], col, kwargs...) for field_op in 1:length(field_H_terms)]
+    Hs            = MPS[MPS(Ny, tensors(H_term), 0, Ny+1) for H_term in vcat(vHs, fHs)]
         
     for row in 1:Ny-1
         ci = linkIndex(I_mps, row)
@@ -188,10 +188,10 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
 end
 
 function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     working_combiner = Vector{ITensor}(undef, Ny)
-    up_combiners = Vector{ITensor}(undef, Ny-1)
-    I_mpo  = buildNewI(A, col, prev_combiners, working_combiner, up_combiners, side)
+    up_combiners     = Vector{ITensor}(undef, Ny-1)
+    I_mpo            = buildNewI(A, col, prev_combiners, working_combiner, up_combiners, side)
     copyto!(next_combiners, working_combiner)
     for row in 1:Ny-1
         ci = linkIndex(I_mpo, row)
@@ -199,22 +199,22 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
         replaceIndex!(I_mpo[row], ci, ni) 
         replaceIndex!(I_mpo[row+1], ci, ni)
     end
-    new_I = applyMPO(I_mpo, prev_Env.I, kwargs...)
-    new_H = applyMPO(I_mpo, prev_Env.H, kwargs...)
+    new_I         = applyMPO(I_mpo, prev_Env.I, kwargs...)
+    new_H         = applyMPO(I_mpo, prev_Env.H, kwargs...)
     field_H_terms = getDirectional(H[col], Field)
     vert_H_terms  = getDirectional(H[col], Vertical)
     hori_H_terms  = getDirectional(H[col], Vertical)
     side_H_terms  = getDirectional(side == :left ? H[col] : H[col - 1], Horizontal)
-    H_term_count = 1 + length(field_H_terms) + length(vert_H_terms) + (side == :left ? length(side_H_terms) : length(hori_H_terms))
-    new_H_mps = Vector{MPS}(undef, H_term_count)
-    new_H_mps[1] = deepcopy(new_H)
+    H_term_count  = 1 + length(field_H_terms) + length(vert_H_terms) + (side == :left ? length(side_H_terms) : length(hori_H_terms))
+    new_H_mps     = Vector{MPS}(undef, H_term_count)
+    new_H_mps[1]  = deepcopy(new_H)
     vHs = [buildNewVerticals(A, prev_combiners, next_combiners, up_combiners, vert_H_terms[vert_op], col, kwargs...) for vert_op in 1:length(vert_H_terms)]
     fHs = [buildNewFields(A, prev_combiners, next_combiners, up_combiners, field_H_terms[field_op], col, kwargs...) for field_op in 1:length(field_H_terms)]
     new_H_mps[2:length(vert_H_terms) + length(field_H_terms) + 1] = [applyMPO(H_term, prev_Env.I, kwargs...) for H_term in vcat(vHs, fHs)]
-    connect_H = side == :left ? side_H_terms : hori_H_terms
+    connect_H    = side == :left ? side_H_terms : hori_H_terms
     new_H_mps[length(vert_H_terms) + length(field_H_terms) + 2:end] = [connectDanglingBonds(A, next_combiners, up_combiners, connect_H_term, prev_Env.InProgress, side, -1, col, kwargs...) for connect_H_term in connect_H]
-    H_overall = sum(new_H_mps, kwargs...)
-    gen_H_terms = side == :left ? hori_H_terms : side_H_terms
+    H_overall    = sum(new_H_mps, kwargs...)
+    gen_H_terms  = side == :left ? hori_H_terms : side_H_terms
     in_progress  = Matrix{ITensor}(undef, Ny, length(side_H_terms))
     for side_term in 1:length(gen_H_terms)
         in_progress[1:Ny, side_term] = generateNextDanglingBonds(A, up_combiners, gen_H_terms[side_term], prev_Env.I, side, col, kwargs...)
@@ -223,31 +223,31 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
 end
 
 function buildNewVerticals(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H, col::Int)::MPO
-    Nx, Ny = size(A)
-    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
-    ops = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
-    vertical_row_a = H.sites[1][1]
-    vertical_row_b = H.sites[2][1]
+    Ny, Nx = size(A)
+    col_site_inds       = [findIndex(x, "Site") for x in A[:, col]]
+    ops                 = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+    vertical_row_a      = H.sites[1][1]
+    vertical_row_b      = H.sites[2][1]
     ops[vertical_row_a] = replaceindex!(copy(H.ops[1]), H.site_ind, col_site_inds[vertical_row_a]) 
     ops[vertical_row_b] = replaceindex!(copy(H.ops[2]), H.site_ind, col_site_inds[vertical_row_b])
-    internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    AAs = [ A[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
+    internal_cmb_u      = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
+    AAs                 = [ A[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
     return MPO(Ny, AAs, 0, Ny+1)
 end
 
 function buildNewFields(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H)::MPO
-    Nx, Ny = size(A)
-    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
-    ops = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
-    field_row = H.sites[1][1]
+    Ny, Nx = size(A)
+    col_site_inds  = [findIndex(x, "Site") for x in A[:, col]]
+    ops            = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+    field_row      = H.sites[1][1]
     ops[field_row] = replaceindex!(copy(H.ops[1]), H.site_ind, col_site_inds[field_row]) 
     internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    AAs = [ A[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
+    AAs            = [ A[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
     return MPO(Ny, AAs, 0, Ny+1)
 end
 
 function buildNewI(A::PEPS, col::Int, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, side::Symbol)::MPO
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     Iapp = MPO(Ny)
     next_col = side == :left ? col + 1 : col - 1 # side is handedness of environment
     @inbounds for row in 1:Ny
@@ -266,52 +266,52 @@ function buildNewI(A::PEPS, col::Int, previous_combiners::Vector{ITensor}, next_
 end
 
 function generateEdgeDanglingBonds(A::PEPS, up_combiners::Vector{ITensor}, H, side::Symbol, col::Int)::Vector{ITensor}
-    Nx, Ny = size(A)
-    op_row = side == :left ? H.sites[1][1] : H.sites[2][1];
-    H_op = side == :left ? H.ops[1] : H.ops[2];
-    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
-    ops = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
-    ops[op_row] = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
+    Ny, Nx = size(A)
+    op_row         = side == :left ? H.sites[1][1] : H.sites[2][1];
+    H_op           = side == :left ? H.ops[1] : H.ops[2];
+    col_site_inds  = [findIndex(x, "Site") for x in A[:, col]]
+    ops            = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+    ops[op_row]    = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
     internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    this_IP = [As[row, col] * ops[row] * prime(dag(As[row, col])) * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    this_IP        = [As[row, col] * ops[row] * prime(dag(As[row, col])) * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
     return this_IP;
 end
 
 function generateNextDanglingBonds(A::PEPS, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H, Ident::MPS, side::Symbol, col::Int; kwargs...)::Vector{ITensor}
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     op_row = side == :left ? H.sites[1][1] : H.sites[2][1]
     H_op   = side == :left ? H.ops[1] : H.ops[2]
-    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
-    ops = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
-    ops[op_row] = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
-    internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    this_IP = [As[row, col] * ops[row] * prime(dag(As[row, col])) * previous_combiners[row] * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    col_site_inds   = [findIndex(x, "Site") for x in A[:, col]]
+    ops             = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+    ops[op_row]     = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
+    internal_cmb_u  = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
+    this_IP         = [As[row, col] * ops[row] * prime(dag(As[row, col])) * previous_combiners[row] * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
     in_progress_MPO = MPO(Ny, this_IP, 0, Ny+1)
-    result = applyMPO(in_progress_MPO, Ident, kwargs...)
+    result          = applyMPO(in_progress_MPO, Ident, kwargs...)
     return ITensor[result[row]*next_combiner[row] for row in 1:Ny]
 end
 
 function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, oldH, in_progress::Vector{ITensor}, side::Symbol, work_row::Int, col::Int; kwargs...)::Vector{ITensor}
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     op_row_a = oldH.sites[1][1]
     op_row_b = oldH.sites[2][1]
-    op = side == :left ? oldH.ops[2] : oldH.ops[1]
+    op       = side == :left ? oldH.ops[2] : oldH.ops[1]
     application_row = side == :left ? op_row_b : op_row_a
-    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
-    ops = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
-    ops[app_row] = replaceindex!(copy(op), oldH.site_ind, col_site_inds[app_row])
+    col_site_inds  = [findIndex(x, "Site") for x in A[:, col]]
+    ops            = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+    ops[app_row]   = replaceindex!(copy(op), oldH.site_ind, col_site_inds[app_row])
     internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    in_prog_mps = MPS(Ny, in_progress, 0, Ny + 1)
-    this_IP = [As[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    in_prog_mps    = MPS(Ny, in_progress, 0, Ny + 1)
+    this_IP        = [As[row, col] * ops[row] * prime(dag(As[row, col])) * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
     if 0 < working_row < Ny + 1
         this_IP[working_row] = ops[working_row]
     end
     completed_H = MPO(Ny, this_IP, 0, Ny+1)
     if working_row == -1
-        dummy_cmbs = [combiner(commonInds(completed_H[row], in_prog_mps[row]), tags="Site,dummy,r$row") for row in 1:Ny]
+        dummy_cmbs     = [combiner(commonInds(completed_H[row], in_prog_mps[row]), tags="Site,dummy,r$row") for row in 1:Ny]
         completed_H.A_ = dummy_cmbs .* tensors(completed_H)
         in_prog_mps.A_ = dummy_cmbs .* tensors(in_prog_mps)
-        result = applyMPO(completed_H, in_prog_mps, kwargs...)
+        result         = applyMPO(completed_H, in_prog_mps, kwargs...)
         return tensors(result)
     else
         for row in 1:Ny-1
@@ -325,11 +325,11 @@ function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combi
 end
 
 function buildLs(A::PEPS, H; kwargs...)
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     previous_combiners = Vector{ITensor}(undef, Ny)
-    next_combiners = Vector{ITensor}(undef, Ny)
-    Ls = Vector{Environments}(undef, Nx)
-    start_col::Int = get(kwargs, :start_col, 1)
+    next_combiners     = Vector{ITensor}(undef, Ny)
+    Ls                 = Vector{Environments}(undef, Nx)
+    start_col::Int     = get(kwargs, :start_col, 1)
     if start_col == 1
         left_H_terms = getDirectional(H[1], Horizontal)
         Ls[1] = buildEdgeEnvironment(A, H, left_H_terms, previous_combiners, :left, 1, kwargs...)
@@ -345,11 +345,11 @@ function buildLs(A::PEPS, H; kwargs...)
 end
 
 function buildRs(A::PEPS, H; kwargs...)
-    Nx, Ny = size(A)
+    Ny, Nx = size(A)
     previous_combiners = Vector{ITensor}(undef, Ny)
-    next_combiners = Vector{ITensor}(undef, Ny)
-    start_col::Int = get(kwargs, :start_col, Nx)
-    Rs = Vector{Environments}(undef, Nx)
+    next_combiners     = Vector{ITensor}(undef, Ny)
+    start_col::Int     = get(kwargs, :start_col, Nx)
+    Rs                 = Vector{Environments}(undef, Nx)
     if start_col == Nx
         right_H_terms = getDirectional(H[Nx-1], Horizontal)
         Rs[Nx] = buildEdgeEnvironment(A, H, right_H_terms, previous_combiners, :right, Nx, kwargs...)
@@ -363,6 +363,118 @@ function buildRs(A::PEPS, H; kwargs...)
     end
     return Rs
 end
+
+function makeAncillaryIs(A::PEPS, L::Environments, R::Environments, col::Int)
+    Ny, Nx  = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    AAs = [prepareRow(A[row, col], spinI(col_site_inds[row]), left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Nx]
+    return cumprod(reverse(AA)), fill(ITensor(1), Ny)
+end
+
+function updateAncillaryIs(A::PEPS, Ibelow::Vector{ITensor}, L::Environments, R::Environments, col::Int, row::Int )
+    Ny, Nx  = size(A)
+    left_A  = col > 1 ? A[row, col - 1] : ITensor(1) 
+    right_A = col < Nx ? A[row, col + 1] :ITensor(1)
+    AA      = prepareRow(A[row, col], spinI(col_site_inds[row]), left_As[row], right_As[row], L.I[row], R.I[row], col, Nx)
+    AA     *= row > 0 ? Ibelow[row - 1] : ITensor(1)
+    push!(Ibelow, AA)
+    return Ibelow
+end
+
+function makeAncillaryFs(A::PEPS, L::Environments, R::Environments, H, col::Int)
+    Ny, Nx   = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    Fabove   = fill(Vector{ITensor}(), length(H))
+    for opcode in 1:length(H)
+        op_row      = H[opcode].sites[1][1]
+        ops         = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+        ops[op_row] = replaceindex!(copy(H[opcode].ops[1]), H.site_ind, col_site_inds[op_row])
+        ancFs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
+        Fabove[opcode] = cumprod(reverse(ancFs)) 
+    end
+    return Fabove
+end
+
+function updateAncillaryFs(A::PEPS, Fbelow::Vector{ITensor}, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, col::Int, row::Int)
+    Ny, Nx   = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    for opcode in 1:length(H)
+        op_row      = H[opcode].sites[1][1]
+        ops         = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+        ops[op_row] = op_row == row ? replaceindex!(copy(H[opcode].ops[1]), H.site_ind, col_site_inds[op_row]) : spinI(spin_ind)
+        ancF = prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx)
+        push!(Fbelow[opcode], Fbelow[opcode][end]*ancF) 
+    end
+    return Fbelow
+end
+
+function makeAncillaryVs(A::PEPS, L::Environments, R::Environments, H, col::Int)
+    Ny, Nx   = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    Vabove   = fill(Vector{ITensor}(), length(H))
+    for opcode in 1:length(H)
+        op_row_a      = H[opcode].sites[1][1]
+        op_row_b      = H[opcode].sites[2][1]
+        ops           = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+        ops[op_row_a] = replaceindex!(copy(H[opcode].ops[1]), H.site_ind, col_site_inds[op_row_a])
+        ops[op_row_b] = replaceindex!(copy(H[opcode].ops[2]), H.site_ind, col_site_inds[op_row_b])
+        ancVs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
+        Vabove[opcode] = cumprod(reverse(ancFs))[1:op_row_a+1] 
+    end
+    return Vabove
+end
+
+function updateAncillaryVs(A::PEPS, Vbelow::Vector{ITensor}, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, col::Int, row::Int)
+    Ny, Nx   = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    for opcode in 1:length(H)
+        op_row_a      = H[opcode].sites[1][1]
+        op_row_b      = H[opcode].sites[2][1]
+        ops           = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+        ops[op_row_a] = replaceindex!(copy(H[opcode].ops[1]), H.site_ind, col_site_inds[op_row_a])
+        ops[op_row_b] = replaceindex!(copy(H[opcode].ops[2]), H.site_ind, col_site_inds[op_row_b])
+        if op_row_b < row
+            AA  = prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx)
+            push!(Vbelow[opcode], Vbelow[opcode][end] * AA)
+        elseif op_row_b == row
+            Ib  = op_row_a > 1 ? Ibelow[op_row_a - 1] : ITensor(1)
+            AA  = prepareRow(A[op_row_a, col], ops[op_row_a], left_As[op_row_a], right_As[op_row_a], L.I[op_row_a], R.I[op_row_a], col, Nx)
+            AA *= prepareRow(A[op_row_b, col], ops[op_row_b], left_As[op_row_b], right_As[op_row_b], L.I[op_row_b], R.I[op_row_b], col, Nx)
+            push!(Vbelow[opcode], AA*Ib)
+        end
+    end
+    return Vbelow
+end
+
+# needs help!
+function makeAncillarySide(A::PEPS, L::Environments, R::Environments, H, col::Int, side::Symbol)
+    Ny, Nx   = size(A)
+    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
+    Vabove   = fill(Vector{ITensor}(), length(H))
+    for opcode in 1:length(H)
+        op_row_a      = H[opcode].sites[1][1]
+        op_row_b      = H[opcode].sites[2][1]
+        ops           = ITensor[spinI(spin_ind) for spin_inds in col_site_inds] 
+        ops[op_row_a] = replaceindex!(copy(H[opcode].ops[1]), H.site_ind, col_site_inds[op_row_a])
+        ops[op_row_b] = replaceindex!(copy(H[opcode].ops[2]), H.site_ind, col_site_inds[op_row_b])
+        ancVs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
+        Vabove[opcode] = cumprod(reverse(ancFs))[1:op_row_a+1] 
+    end
+    return Vabove
+end
+
 
 Nx = 4
 Ny = 4
