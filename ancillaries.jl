@@ -1,7 +1,7 @@
 function makeAncillaryIs(A::PEPS, L::Environments, R::Environments, col::Int)
     Ny, Nx  = size(A)
     left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
     AAs = [prepareRow(A[row, col], spinI(col_site_inds[row]), left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Nx]
     return cumprod(reverse(AA)), fill(ITensor(1), Ny)
@@ -10,7 +10,7 @@ end
 function updateAncillaryIs(A::PEPS, Ibelow::Vector{ITensor}, L::Environments, R::Environments, col::Int, row::Int )
     Ny, Nx  = size(A)
     left_A  = col > 1 ? A[row, col - 1] : ITensor(1) 
-    right_A = col < Nx ? A[row, col + 1] :ITensor(1)
+    right_A = col < Nx ? A[row, col + 1] : ITensor(1)
     AA      = prepareRow(A[row, col], spinI(col_site_inds[row]), left_As[row], right_As[row], L.I[row], R.I[row], col, Nx)
     AA     *= row > 0 ? Ibelow[row - 1] : ITensor(1)
     push!(Ibelow, AA)
@@ -20,7 +20,7 @@ end
 function makeAncillaryFs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx   = size(A)
     left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
     Fabove   = fill(Vector{ITensor}(), length(H))
     for opcode in 1:length(H)
@@ -36,7 +36,7 @@ end
 function updateAncillaryFs(A::PEPS, Fbelow::Vector{ITensor}, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, col::Int, row::Int)
     Ny, Nx   = size(A)
     left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
     for opcode in 1:length(H)
         op_row      = H[opcode].sites[1][1]
@@ -51,7 +51,7 @@ end
 function makeAncillaryVs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx   = size(A)
     left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
     Vabove   = fill(Vector{ITensor}(), length(H))
     for opcode in 1:length(H)
@@ -69,7 +69,7 @@ end
 function updateAncillaryVs(A::PEPS, Vbelow::Vector{ITensor}, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, col::Int, row::Int)
     Ny, Nx   = size(A)
     left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] :ITensor(1) for row in 1:Ny]
+    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findIndex(x, "Site") for x in A[:, col]]
     for opcode in 1:length(H)
         op_row_a      = H[opcode].sites[1][1]

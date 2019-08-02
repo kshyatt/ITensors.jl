@@ -1,5 +1,7 @@
 using ITensors, Random
 
+import ITensors: tensors
+
 mutable struct PEPS
     Nx::Int
     Ny::Int
@@ -138,15 +140,16 @@ function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
 end
 
 function combine(AA::ITensor, Aorig::ITensor, Anext::ITensor, tags::String)
-    ci                = commonindex(Aorig, Anext)
-    cmb, combined_ind = combiner(IndexSet(ci, prime(ci)), tags=tags)
-    AA               *= cmb
+    ci   = commonindex(Aorig, Anext)
+    cmb  = combiner(IndexSet(ci, prime(ci)), tags=tags)
+    AA  *= cmb
     return cmb, AA
 end
 
 function reconnect(combiner_ind::Index, environment::ITensor)
     environment_combiner       = findIndex(environment, "Site")
-    new_combiner, combined_ind = combiner(IndexSet(combiner_ind, prime(combiner_ind)), tags="Site")
+    new_combiner               = combiner(IndexSet(combiner_ind, prime(combiner_ind)), tags="Site")
+    combined_ind               = findindex(combiner, "Site")
     combiner_transfer          = δ(combined_ind, environment_combiner)
     return new_combiner*combiner_transfer
 end
