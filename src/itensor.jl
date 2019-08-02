@@ -1,5 +1,6 @@
 export ITensor,
        norm,
+       combiner,
        delta,
        dims,
        δ,
@@ -190,6 +191,14 @@ end
 randomITensor(::Type{S},inds::Index...) where {S<:Number} = randomITensor(S,IndexSet(inds...))
 randomITensor(inds::Indices) = randomITensor(Float64,IndexSet(inds))
 randomITensor(inds::Index...) = randomITensor(Float64,IndexSet(inds...))
+
+function combiner(inds::IndexSet; kwargs...)
+    tags = get(kwargs, :tags, "CMB,Link")
+    new_ind = Index(prod(dims(inds)), tags)
+    new_is = IndexSet(new_ind, inds)
+    return ITensor(new_is, CombinerStorage(new_ind, new_is))
+end
+combiner(inds::Index...; kwargs...) = combiner(IndexSet(inds...); kwargs...)
 
 norm(T::ITensor) = storage_norm(store(T))
 dag(T::ITensor) = ITensor(storage_dag(store(T),inds(T))...)
