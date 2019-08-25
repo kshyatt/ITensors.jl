@@ -37,7 +37,7 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
         in_progress[1:Ny, side_term] = generateEdgeDanglingBonds(A, up_combiners, side_H_terms[side_term], side, col)
     end
     @debug "Generated edge bonds"
-    position!(I_mps, 1; kwargs...)
+    orthogonalize!(I_mps, 1; kwargs...)
     return Environments(I_mps, H_overall, in_progress)
 end
 

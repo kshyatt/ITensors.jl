@@ -63,17 +63,12 @@ function checkerboardPEPS(sites, Nx::Int, Ny::Int; mindim::Int=1)
     @inbounds for ii ∈ eachindex(sites)
         row = div(ii-1, Nx) + 1
         col = mod(ii-1, Nx) + 1
-        spin_side = isodd(row - 1) ⊻ isodd(col - 1) ? 2 : 1
+        spin_side = isodd(row - 1) ⊻ isodd(col - 1) ? 1 : 2
         si  = findindex(A[ii], "Site") 
         lis = findinds(A[ii], "Link") 
         ivs = [li(1) for li in lis]
         ivs = vcat(ivs, si(spin_side))
         A[ii][ivs...] = 1.0
-    end
-    for row in 1:Ny, col in 1:Nx
-        salt = randomITensor(inds(A[row, col]))
-        salt /= 100.0 * norm(salt)
-        A[row, col] += salt
     end
     return A
 end
@@ -425,8 +420,9 @@ function buildHIedge( A::PEPS, E::Environments, row::Int, col::Int, side )
         ci = commonindex(A[work_row, col], A[work_row, next_col])
         cmb = findindex(E.I[work_row], "Site")
         acmb = combiner(IndexSet(ci, ci'), tags="Site")
-        delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
-        AA *= acmb * delt
+        #delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
+        replaceindex!(acmb, combinedindex(acmb), cmb)
+        AA *= acmb
         HI *= AA * E.I[work_row]
         IH *= E.H[work_row] * AA
     end
@@ -438,16 +434,17 @@ function buildHIedge( A::PEPS, E::Environments, row::Int, col::Int, side )
     op = is_gpu ? cuITensor(op) : op
     HI *= op
     IH *= op
-    delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
-    HI *= E.I[row] * delt * acmb
-    IH *= E.H[row] * delt * acmb
+    #delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
+    replaceindex!(acmb, combinedindex(acmb), cmb)
+    HI *= E.I[row] * acmb
+    IH *= E.H[row] * acmb
     for work_row in row+1:Ny
         AA = A[work_row, col] * prime(A[work_row, col], "Link")
         ci = commonindex(A[work_row, col], A[work_row, next_col])
         cmb = findindex(E.I[work_row], "Site")
         acmb = combiner(IndexSet(ci, ci'), tags="Site")
-        delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
-        AA *= delt * acmb
+        #delt = is_gpu ? cudelt(combinedindex(acmb), cmb) : δ(combinedindex(acmb), cmb)
+        AA *= replaceindex!(acmb, combinedindex(acmb), cmb)
         HI *= AA * E.I[work_row]
         IH *= E.H[work_row] * AA
     end
@@ -476,10 +473,10 @@ function buildHIs(A::PEPS, L::Environments, R::Environments, row::Int, col::Int)
         rcmb = findindex(R.I[work_row], "Site")
         lacmb = combiner(IndexSet(lci, lci'), tags="Site")
         racmb = combiner(IndexSet(rci, rci'), tags="Site")
-        ldelt = is_gpu ? cudelt(combinedindex(lacmb), lcmb) : δ(combinedindex(lacmb), lcmb)
-        rdelt = is_gpu ? cudelt(combinedindex(racmb), rcmb) : δ(combinedindex(racmb), rcmb)
-        AA *= lacmb * ldelt
-        AA *= racmb * rdelt
+        replaceindex!(lacmb, combinedindex(lacmb), lcmb)
+        replaceindex!(racmb, combinedindex(racmb), rcmb)
+        AA *= lacmb
+        AA *= racmb
         HLI_b *= L.H[work_row] * AA * R.I[work_row]
         IHR_b *= L.I[work_row] * AA * R.H[work_row]
     end
@@ -489,12 +486,12 @@ function buildHIs(A::PEPS, L::Environments, R::Environments, row::Int, col::Int)
     rcmb = findindex(R.I[row], "Site")
     lacmb = combiner(IndexSet(lci, lci'), tags="Site")
     racmb = combiner(IndexSet(rci, rci'), tags="Site")
-    ldelt = δ(combinedindex(lacmb), lcmb)
-    rdelt = δ(combinedindex(racmb), rcmb)
-    HLI *= L.H[row] * ldelt * lacmb 
-    HLI *= R.I[row] * rdelt * racmb 
-    IHR *= L.I[row] * ldelt * lacmb 
-    IHR *= R.H[row] * rdelt * racmb 
+    replaceindex!(lacmb, combinedindex(lacmb), lcmb)
+    replaceindex!(racmb, combinedindex(racmb), rcmb)
+    HLI  *= L.H[row] * lacmb 
+    HLI  *= R.I[row] * racmb 
+    IHR  *= L.I[row] * lacmb 
+    IHR  *= R.H[row] * racmb 
     op = spinI(findindex(A[row, col], "Site"); is_gpu=is_gpu)
     HLI *= op
     IHR *= op
@@ -506,10 +503,10 @@ function buildHIs(A::PEPS, L::Environments, R::Environments, row::Int, col::Int)
         rcmb = findindex(R.I[work_row], "Site")
         lacmb = combiner(IndexSet(lci, lci'), tags="Site")
         racmb = combiner(IndexSet(rci, rci'), tags="Site")
-        ldelt = is_gpu ? cudelt(combinedindex(lacmb), lcmb) : δ(combinedindex(lacmb), lcmb)
-        rdelt = is_gpu ? cudelt(combinedindex(racmb), rcmb) : δ(combinedindex(racmb), rcmb)
-        AA *= lacmb * ldelt
-        AA *= racmb * rdelt
+        replaceindex!(lacmb, combinedindex(lacmb), lcmb)
+        replaceindex!(racmb, combinedindex(racmb), rcmb)
+        AA *= lacmb
+        AA *= racmb
         HLI_a *= L.H[work_row] * AA * R.I[work_row]
         IHR_a *= L.I[work_row] * AA * R.H[work_row]
     end
@@ -951,7 +948,7 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
     λ, new_A = davidson(localH, A[row, col]; kwargs...)
     new_E = new_A * localH * dag(new_A)'
     new_N = new_A * N * dag(new_A)'
-    println("Optimized energy at row $row col $col : $(scalar(new_E))")
+    println("Optimized energy at row $row col $col : $(scalar(new_E)/(scalar(new_N)))")
     println("Optimized norm at row $row col $col : $(scalar(new_N))")
     if row < Ny
         @debug "\tRestoring intraColumnGauge for col $col row $row"
@@ -1032,7 +1029,7 @@ function rightwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environmen
         # ....
         # Gauge
         @debug "Gauging col $col"
-        A, tg, bytes, gctime, memallocs = @timed gaugeColumn(A, col, :right; kwargs...)
+        #A, tg, bytes, gctime, memallocs = @timed gaugeColumn(A, col, :right; kwargs...)
         @debug "Time to gauge $tg"
         if col == 1
             left_H_terms = getDirectional(H[1], Horizontal)
@@ -1062,7 +1059,7 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
         # ....
         # Gauge
         @debug "Gauging col $col"
-        A, tg, bytes, gctime, memallocs = @timed gaugeColumn(A, col, :left; kwargs...) 
+        #A, tg, bytes, gctime, memallocs = @timed gaugeColumn(A, col, :left; kwargs...) 
         @debug "Time to gauge $tg"
         if col == Nx
             right_H_terms = getDirectional(H[Nx - 1], Horizontal)
