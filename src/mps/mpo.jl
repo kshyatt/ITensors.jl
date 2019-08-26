@@ -344,9 +344,9 @@ function nmultMPO(A::MPO, B::MPO; kwargs...)::MPO
     N = length(A)
     N != length(B) && throw(DimensionMismatch("lengths of MPOs A ($N) and B ($(length(B))) do not match"))
     A_ = copy(A)
-    orthogonalize!(A_, 1)
+    orthogonalize!(A_, 1; kwargs...)
     B_ = copy(B)
-    orthogonalize!(B_, 1)
+    orthogonalize!(B_, 1; kwargs...)
 
     links_A = findinds.(A.A_, "Link")
     links_B = findinds.(B.A_, "Link")
@@ -372,8 +372,6 @@ function nmultMPO(A::MPO, B::MPO; kwargs...)::MPO
         sdb = setdiff(findinds(BB, "Site"), findinds(AA, "Site"))
         push!(sites_B, sdb[1])
     end
-    #sites_A = [setdiff(findinds(x, "Site"), findindex(y, "Site")) for (x,y) in zip(tensors(A_), tensors(B_))]
-    #sites_B = [setdiff(findinds(x, "Site"), findindex(y, "Site")) for (x,y) in zip(tensors(B_), tensors(A_))]
     res[1] = ITensor(sites_A[1], sites_B[1], commonindex(res[1], res[2]))
     for i in 1:N-2
         if i == 1
@@ -411,7 +409,7 @@ function orthogonalize!(M::Union{MPS,MPO},
     (leftLim(M) < 0) && setLeftLim!(M,0)
     b = leftLim(M)+1
     linds = uniqueinds(M[b],M[b+1])
-    Q,R = qr(M[b], linds)
+    Q,R = qr(M[b], linds; kwargs...)
     M[b] = Q
     M[b+1] *= R
     setLeftLim!(M,b)
@@ -426,7 +424,7 @@ function orthogonalize!(M::Union{MPS,MPO},
     (rightLim(M) > (N+1)) && setRightLim!(M,N+1)
     b = rightLim(M)-2
     rinds = uniqueinds(M[b+1],M[b])
-    Q,R = qr(M[b+1], rinds)
+    Q,R = qr(M[b+1], rinds; kwargs...)
     M[b+1] = Q
     M[b] *= R
     setRightLim!(M,b+1)
@@ -442,17 +440,16 @@ function truncate!(M::Union{MPS,MPO}; kwargs...)
 
   # Left-orthogonalize all tensors to make
   # truncations controlled
-  orthogonalize!(M,N; kwargs...)
+  orthogonalize!(M, N; kwargs...)
 
   # Perform truncations in a right-to-left sweep
   for j in reverse(2:N)
-    rinds = uniqueinds(M[j],M[j-1])
-    U,S,V = svd(M[j],rinds;kwargs...)
+    rinds = uniqueinds(M[j], M[j-1])
+    U,S,V = svd(M[j], rinds; kwargs...)
     M[j] = U
     M[j-1] *= (S*V)
     setRightLim!(M,j)
   end
-
 end
 
 @doc """
