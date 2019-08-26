@@ -63,7 +63,6 @@ function storage_contract(CSstore::CombinerStorage,
           ni += 1
           Nis[i] = dis[j]
           i += 1
-          ni += 1
         end
       end
       rsD = permutedims(reshape(data(Dstore), dims(dis)), invperm(P))
