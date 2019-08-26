@@ -950,6 +950,9 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
     new_N = new_A * N * dag(new_A)'
     println("Optimized energy at row $row col $col : $(scalar(new_E)/(scalar(new_N)))")
     println("Optimized norm at row $row col $col : $(scalar(new_N))")
+    if scalar(new_E)/(scalar(new_N)) > scalar(initial_E)/(scalar(initial_N))
+        new_A = A[row, col]
+    end
     if row < Ny
         @debug "\tRestoring intraColumnGauge for col $col row $row"
         Lis   = IndexSet(findindex(new_A, "Site"))
