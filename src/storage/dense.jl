@@ -330,7 +330,7 @@ function storage_svd(Astore::Dense{T, S},
   Uis,Ustore = IndexSet(Lis...,u),Dense{T, S}(vec(MU))
   #TODO: make a diag storage
   Sis,Sstore = IndexSet(u,v),Diag{Float64}(MS)
-  Vis,Vstore = IndexSet(Ris...,v),Dense{T}(Vector{T}(vec(MV)))
+  Vis,Vstore = IndexSet(Ris...,v),Dense{T, Vector{T}}(Vector{T}(vec(MV)))
 
   return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
 end
@@ -369,7 +369,7 @@ function storage_eigen(Astore::Dense{S, T},
   #TODO: include truncation parameters as keyword arguments
   u = Index(dD,lefttags)
   v = settags(u,righttags)
-  Uis,Ustore = IndexSet(Lis...,u),Dense{T}(vec(MU))
+  Uis,Ustore = IndexSet(Lis...,u),Dense{S, T}(vec(MU))
   Dis,Dstore = IndexSet(u,v),Diag{Float64}(MD)
   return (Uis,Ustore,Dis,Dstore)
 end
@@ -402,11 +402,11 @@ end
 function storage_polar(Astore::Dense{S, T},
                        Lis::IndexSet,
                        Ris::IndexSet) where {S<:Number, T<:Array}
-  dim_left = dim(Lis)
-  dim_right = dim(Ris)
-  MQ,MP = polar(reshape(data(Astore),dim_left,dim_right))
+  dim_left   = dim(Lis)
+  dim_right  = dim(Ris)
+  MQ,MP      = polar(reshape(data(Astore),dim_left,dim_right))
   dim_middle = min(dim_left,dim_right)
-  Uis = prime(Ris)
+  Uis        = prime(Ris)
   Qis,Qstore = IndexSet(Lis...,Uis...),Dense{S, T}(vec(MQ))
   Pis,Pstore = IndexSet(Uis...,Ris...),Dense{S, T}(vec(MP))
   return (Qis,Qstore,Pis,Pstore)
