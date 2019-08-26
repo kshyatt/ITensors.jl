@@ -63,15 +63,12 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
             end
         end
         for row in 1:Ny
-            #=println()
-            @show row
-            @show Envs[row]
-            println()=#
+            ei = commonindex(findinds(Envs[row], "Site"), findinds(A[row, col], "Site"))
             if row < Ny
-                Q_, P_ = polar(Envs[row], QR_inds[row], commonindex(Q[row], Q[row+1]), findindex(Envs[row], "Site"))
+                Q_, P_ = polar(Envs[row], QR_inds[row], commonindex(Q[row], Q[row+1]), ei)
                 Q[row] = noprime(Q_) 
             else
-                Q_, P_ = polar(Envs[row], QR_inds[row], findindex(Envs[row], "Site"))
+                Q_, P_ = polar(Envs[row], QR_inds[row], ei)
                 Q[row] = noprime(Q_)
             end
             AQinds = IndexSet(findindex(A[row, col], "Site")) 
@@ -191,9 +188,5 @@ function gaugeColumn( A::PEPS, col::Int, side::Symbol; kwargs...)
         a_norm *= dag(A[row, col]) * A[row, col]
         na_norm *= dag(A[row, next_col]) * A[row, next_col]
     end
-    
-    @show scalar(a_norm)
-    @show scalar(na_norm)
-    println()
     return A
 end

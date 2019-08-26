@@ -25,7 +25,7 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
         replaceindex!(I_mps[row], ci, ni) 
         replaceindex!(I_mps[row+1], ci, ni)
     end
-    maxdim = get(kwargs, :maxdim, 1)
+    maxdim       = get(kwargs, :maxdim, 1)
     H_overall    = length(Hs) > 0 ? reduce((x,y) -> sum(x, y; kwargs...), Hs) : I_mps
     @debug "Summed Hs, maxdim=$maxdim"
     side_H       = side == :left ? H[:, col] : H[:, col - 1]

@@ -260,18 +260,18 @@ function makeCuH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
         end
     end
     # pinning fields
-    J_ = 1.;
+    J_ = 1.
     for row in 1:Ny
-        op = isodd(row) ? (-J_/2.0) * Z : (J_/2.0) * Z   
-        push!(H[row, 1], Operator([row=>1], [cuITensor(op)], s, Field))    
         op = isodd(row) ? (J_/2.0) * Z : (-J_/2.0) * Z   
-        push!(H[row, Nx], Operator([row=>Nx], [cuITensor(op)], s, Field))    
+        push!(H[row, 1], Operator([row=>1], [op], s, Field))    
+        op = isodd(row) ? (-J_/2.0) * Z : (J_/2.0) * Z   
+        push!(H[row, Nx], Operator([row=>Nx], [op], s, Field))    
     end
     for col in 2:Nx-1
-        op = isodd(col) ? (J_/2.0) * Z : (-J_/2.0) * Z   
-        push!(H[Ny, col], Operator([Ny=>col], [cuITensor(op)], s, Field))    
         op = isodd(col) ? (-J_/2.0) * Z : (J_/2.0) * Z   
-        push!(H[1, col], Operator([1=>col], [cuITensor(op)], s, Field))    
+        push!(H[Ny, col], Operator([Ny=>col], [op], s, Field))    
+        op = isodd(col) ? (J_/2.0) * Z : (-J_/2.0) * Z   
+        push!(H[1, col], Operator([1=>col], [op], s, Field))    
     end
     return H
 end
