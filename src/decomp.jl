@@ -37,7 +37,6 @@ function truncate!(P::Vector{Float64};
     truncerr += P[n]
     n -= 1
   end
-
   if absoluteCutoff
     #Test if individual prob. weights fall below cutoff
     #rather than using *sum* of discarded weights
@@ -74,7 +73,6 @@ function truncate!(P::Vector{Float64};
       docut += 1E-3*P[n]
     end
   end
-
   resize!(P,n)
 
   return truncerr,docut

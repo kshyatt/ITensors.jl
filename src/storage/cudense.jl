@@ -6,8 +6,8 @@ Base.collect(x::Dense{T, S}) where {T<:Number, S<:CuArray} = Dense{T, Vector{T}}
 
 function truncate!(P::CuVector{Float64};
                    kwargs...)::Tuple{Float64,Float64,CuVector{Float64}}
-  maxdim::Int = get(kwargs,:maxdim,length(P))
-  mindim::Int = get(kwargs,:mindim,1)
+  maxdim::Int = min(get(kwargs,:maxdim,length(P)), length(P))
+  mindim::Int = min(get(kwargs,:mindim,1), maxdim)
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
   absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
@@ -73,7 +73,6 @@ function truncate!(P::CuVector{Float64};
       docut += 1E-3*hP[n]
     end
   end
-  #println("Maxdim inside truncate ", maxdim, " and final n ", n)
   return truncerr,docut,P[1:n]
 end
 
