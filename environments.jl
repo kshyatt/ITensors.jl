@@ -19,20 +19,20 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
     @debug "Built new Vs"
     fHs           = [buildNewFields(A, fake_prev_combiners, fake_next_combiners, up_combiners, field_H_terms[field_op], col) for field_op in 1:length(field_H_terms)]
     Hs            = MPS[MPS(Ny, tensors(H_term), 0, Ny+1) for H_term in vcat(vHs, fHs)]
-    for row in 1:Ny-1
+    @inbounds for row in 1:Ny-1
         ci = linkindex(I_mps, row)
         ni = Index(dim(ci), "u,Link,c$col,r$row")
         replaceindex!(I_mps[row], ci, ni) 
         replaceindex!(I_mps[row+1], ci, ni)
     end
     maxdim       = get(kwargs, :maxdim, 1)
-    H_overall    = length(Hs) > 0 ? reduce((x,y) -> sum(x, y; kwargs...), Hs) : I_mps
+    H_overall    = reduce((x,y) -> sum(x, y; kwargs...), Hs)
     @debug "Summed Hs, maxdim=$maxdim"
     side_H       = side == :left ? H[:, col] : H[:, col - 1]
     side_H_terms = getDirectional(vcat(side_H...), Horizontal)
     @debug "Trying to alloc $(Ny*length(side_H_terms))"
     in_progress  = fill(ITensor(), Ny, length(side_H_terms))
-    for side_term in 1:length(side_H_terms)
+    @inbounds for side_term in 1:length(side_H_terms)
         @debug "Generating edge bonds for term $side_term"
         in_progress[1:Ny, side_term] = generateEdgeDanglingBonds(A, up_combiners, side_H_terms[side_term], side, col)
     end
@@ -45,17 +45,21 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
     Ny, Nx = size(A)
     working_combiner = Vector{ITensor}(undef, Ny)
     up_combiners     = Vector{ITensor}(undef, Ny-1)
-    I_mpo            = buildNewI(A, col, previous_combiners, working_combiner, up_combiners, side)
+    @timeit "build I" begin
+        I_mpo            = buildNewI(A, col, previous_combiners, working_combiner, up_combiners, side)
+    end
     @debug "Built I_mpo"
     copyto!(next_combiners, working_combiner)
-    for row in 1:Ny-1
+    @inbounds for row in 1:Ny-1
         ci = linkindex(I_mpo, row)
         ni = Index(dim(ci), "u,Link,c$col,r$row")
         replaceindex!(I_mpo[row], ci, ni) 
         replaceindex!(I_mpo[row+1], ci, ni)
     end
-    new_I         = applyMPO(I_mpo, prev_Env.I; kwargs...)
-    new_H         = applyMPO(I_mpo, prev_Env.H; kwargs...)
+    @timeit "build new_I and new_H" begin
+        new_I         = applyMPO(I_mpo, prev_Env.I; kwargs...)
+        new_H         = applyMPO(I_mpo, prev_Env.H; kwargs...)
+    end
     @debug "Built new I and H"
     field_H_terms = getDirectional(vcat(H[:, col]...), Field)
     vert_H_terms  = getDirectional(vcat(H[:, col]...), Vertical)
@@ -66,22 +70,35 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
 
     new_H_mps     = Vector{MPS}(undef, H_term_count)
     new_H_mps[1]  = deepcopy(new_H)
-    vHs = [buildNewVerticals(A, previous_combiners, next_combiners, up_combiners, vert_H_terms[vert_op], col) for vert_op in 1:length(vert_H_terms)]
+    @timeit "build new verts" begin
+        vHs = [buildNewVerticals(A, previous_combiners, next_combiners, up_combiners, vert_H_terms[vert_op], col) for vert_op in 1:length(vert_H_terms)]
+    end
     @debug "Built new Vs"
-    fHs = [buildNewFields(A, previous_combiners, next_combiners, up_combiners, field_H_terms[field_op], col) for field_op in 1:length(field_H_terms)]
-    new_H_mps[2:length(vert_H_terms) + length(field_H_terms) + 1] = [applyMPO(H_term, prev_Env.I; kwargs...) for H_term in vcat(vHs, fHs)]
+    @timeit "build new fields" begin
+        fHs = [buildNewFields(A, previous_combiners, next_combiners, up_combiners, field_H_terms[field_op], col) for field_op in 1:length(field_H_terms)]
+    end
+    @timeit "build new H array" begin
+        new_H_mps[2:length(vert_H_terms) + length(field_H_terms) + 1] = [applyMPO(H_term, prev_Env.I; kwargs...) for H_term in vcat(vHs, fHs)]
+    end
 
     connect_H    = side == :left ? side_H_terms : hori_H_terms
-    new_Hs = [connectDanglingBonds(A, next_combiners, up_combiners, connect_H_term, prev_Env.InProgress[:, term_ind], side, -1, col; kwargs...) for (term_ind, connect_H_term) in enumerate(connect_H)]
+    @timeit "connect dangling bonds" begin
+        new_Hs = [connectDanglingBonds(A, next_combiners, up_combiners, connect_H_term, prev_Env.InProgress[:, term_ind], side, -1, col; kwargs...) for (term_ind, connect_H_term) in enumerate(connect_H)]
+    end
     @debug "Connected dangling bonds"
     new_H_mps[length(vert_H_terms) + length(field_H_terms) + 2:end] = [MPS(Ny, new_H, 0, Ny+1) for new_H in new_Hs]
 
-    H_overall    = reduce((x,y) -> sum(x, y; kwargs...), new_H_mps)
+    #H_overall    = reduce((x,y) -> sum(x, y; kwargs...), new_H_mps)
+    @timeit "sum H mps" begin
+        H_overall    = reduce((x,y) -> sum(x, y; kwargs...), new_H_mps)
+    end
     @debug "Summed Hs"
     gen_H_terms  = side == :left ? hori_H_terms : side_H_terms
     in_progress  = fill(ITensor(), Ny, length(side_H_terms))
-    for side_term in 1:length(gen_H_terms)
-        in_progress[1:Ny, side_term] = generateNextDanglingBonds(A, previous_combiners, next_combiners, up_combiners, gen_H_terms[side_term], prev_Env.I, side, col; kwargs...)
+    @timeit "gen dangling bonds" begin
+        @inbounds for side_term in 1:length(gen_H_terms)
+            in_progress[1:Ny, side_term] = generateNextDanglingBonds(A, previous_combiners, next_combiners, up_combiners, gen_H_terms[side_term], prev_Env.I, side, col; kwargs...)
+        end
     end
     @debug "Generated next dangling bonds"
     return Environments(new_I, H_overall, in_progress)
@@ -184,8 +201,8 @@ function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combi
     application_row = side == :left ? op_row_b : op_row_a
     col_site_inds  = [findindex(A[row, col], "Site") for row in 1:Ny]
     ops            = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
-    ops[application_row]   = replaceindex!(copy(op), oldH.site_ind, col_site_inds[application_row])
-    ops[application_row]   = replaceindex!(ops[application_row], oldH.site_ind', col_site_inds[application_row]')
+    ops[application_row] = replaceindex!(copy(op), oldH.site_ind, col_site_inds[application_row])
+    ops[application_row] = replaceindex!(ops[application_row], oldH.site_ind', col_site_inds[application_row]')
     internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
     in_prog_mps    = MPS(Ny, in_progress, 0, Ny + 1)
     this_IP        = [A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
@@ -196,24 +213,22 @@ function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combi
     if work_row == -1
         dummy_cmbs     = [combiner(commoninds(completed_H[row], in_prog_mps[row]), tags="Site,r$row") for row in 1:Ny]
         completed_H.A_ = dummy_cmbs .* tensors(completed_H)
-        ci = Vector{Index}(undef, Ny)
-        si = Vector{Index}(undef, Ny)
+        ci = [commonindex(dummy_cmbs[row], completed_H[row]) for row in 1:Ny]
+        si = [findindex(completed_H[row], "Site,c$col") for row in 1:Ny]
         for row in 1:Ny
-            ci[row] = commonindex(dummy_cmbs[row], completed_H[row])
-            si[row] = findindex(completed_H[row], "Site,c$col")
-            completed_H[row] = replaceindex!(completed_H[row], si[row], ci[row]')
+            replaceindex!(completed_H[row], si[row], ci[row]')
         end
         in_prog_mps.A_ = dummy_cmbs .* tensors(in_prog_mps)
         result         = applyMPO(completed_H, in_prog_mps; kwargs...)
         for row in 1:Ny
-            result[row] = replaceindex!(result[row], ci[row], si[row])
-        end 
+            replaceindex!(result[row], ci[row], si[row])
+        end
         return tensors(result)
     else
-        for row in 1:Ny-1
+        @inbounds for row in 1:Ny-1
             ci = linkIndex(completed_H, row)
             ni = Index(dim(ci), "u,Link,c$col,r$row")
-            replaceIndex!(completed_H[row], ci, ni)
+            replaceIndex!(completed_H[row],   ci, ni)
             replaceIndex!(completed_H[row+1], ci, ni)
         end
         return tensors(completed_H) .* tensors(in_prog_mps)
@@ -234,7 +249,7 @@ function buildLs(A::PEPS, H; kwargs...)
         previous_combiners = [reconnect(commonindex(A[row, start_col], A[row, start_col - 1]), Ls[start_col-1].I[row]) for row in 1:Ny]
     end
     loop_col = start_col == 1 ? 2 : start_col
-    for col in loop_col:Nx-1
+    @inbounds for col in loop_col:Nx-1
         @debug "Building left col $col"
         Ls[col] = buildNextEnvironment(A, Ls[col-1], H, previous_combiners, next_combiners, :left, col; kwargs...)
         previous_combiners = deepcopy(next_combiners)
@@ -255,7 +270,7 @@ function buildRs(A::PEPS, H; kwargs...)
         previous_combiners = [reconnect(commonindex(A[row, start_col], A[row, start_col + 1]), Rs[start_col+1].I[row]) for row in 1:Ny]
     end
     loop_col = start_col == Nx ? Nx-1 : start_col
-    for col in reverse(2:loop_col)
+    @inbounds for col in reverse(2:loop_col)
         @debug "Building right col $col"
         Rs[col]            = buildNextEnvironment(A, Rs[col+1], H, previous_combiners, next_combiners, :right, col; kwargs...)
         previous_combiners = deepcopy(next_combiners)

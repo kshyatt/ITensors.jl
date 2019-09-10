@@ -1,5 +1,5 @@
 function prepareRow(A::ITensor, op::ITensor, left_A::ITensor, right_A::ITensor, left_I::ITensor, right_I::ITensor, col::Int, Nx::Int)
-    AA = A * op * dag(A)'
+    AA = A * op * dag(A')
     if col > 1
         ci = commonindex(A, left_A)
         AA *= multiply_side_ident(AA, ci, left_I)
@@ -18,8 +18,9 @@ function makeAncillaryIs(A::PEPS, L::Environments, R::Environments, col::Int)
     right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     ops = map(x -> spinI(x; is_gpu=is_gpu), col_site_inds)
-    AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Nx]
-    return cumprod(reverse(AAs))
+    AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
+    Iabove = cumprod(reverse(AAs))
+    return Iabove
 end
 
 function makeAncillaryIsBelow(A::PEPS, L::Environments, R::Environments, col::Int)
@@ -29,7 +30,7 @@ function makeAncillaryIsBelow(A::PEPS, L::Environments, R::Environments, col::In
     right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     ops = map(x -> spinI(x; is_gpu=is_gpu), col_site_inds)
-    AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Nx]
+    AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
     return cumprod(AAs)
 end
 
@@ -117,7 +118,7 @@ function makeAncillaryVsBelow(A::PEPS, L::Environments, R::Environments, H, col:
     for opcode in 1:length(H)
         op_row_a      = H[opcode].sites[1][1]
         op_row_b      = H[opcode].sites[2][1]
-        ops = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
+        ops           = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
         ops[op_row_a] = replaceindex!(copy(H[opcode].ops[1]), H[opcode].site_ind, col_site_inds[op_row_a])
         ops[op_row_a] = replaceindex!(ops[op_row_a], H[opcode].site_ind', col_site_inds[op_row_a]')
         ops[op_row_b] = replaceindex!(copy(H[opcode].ops[2]), H[opcode].site_ind, col_site_inds[op_row_b])
@@ -162,13 +163,13 @@ function makeAncillarySide(A::PEPS, EnvIP::Environments, EnvIdent::Environments,
     Sabove   = fill(Vector{ITensor}(), length(H))
     next_col = side == :left ? col + 1 : col - 1
     for opcode in 1:length(H)
-        op_row         = side == :left ? H[opcode].sites[2][1] : H[opcode].sites[1][1] 
-        ops = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
-        ops            = is_gpu ? map(cuITensor, ops) : ops
-        this_op        = side == :left ? H[opcode].ops[2] : H[opcode].ops[1]
-        ops[op_row]    = replaceindex!(copy(this_op), H[opcode].site_ind, col_site_inds[op_row])
-        ops[op_row]    = replaceindex!(ops[op_row], H[opcode].site_ind', col_site_inds[op_row]')
-        AAs            = [A[row, col] * ops[row] * dag(A[row, col])' * EnvIP.InProgress[row, opcode] for row in 1:Ny]
+        op_row      = side == :left ? H[opcode].sites[2][1] : H[opcode].sites[1][1] 
+        ops         = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
+        ops         = is_gpu ? map(cuITensor, ops) : ops
+        this_op     = side == :left ? H[opcode].ops[2] : H[opcode].ops[1]
+        ops[op_row] = replaceindex!(copy(this_op), H[opcode].site_ind, col_site_inds[op_row])
+        ops[op_row] = replaceindex!(ops[op_row], H[opcode].site_ind', col_site_inds[op_row]')
+        AAs         = [A[row, col] * ops[row] * dag(A[row, col])' * EnvIP.InProgress[row, opcode] for row in 1:Ny]
         if (col > 1 && side == :right) || (col < Nx && side == :left)
             cis = [commonindex(A[row, col], A[row, next_col]) for row in 1:Ny]
             msi = [multiply_side_ident(AAs[row], cis[row], EnvIdent.I[row]) for row in 1:Ny]
@@ -186,13 +187,13 @@ function makeAncillarySideBelow(A::PEPS, EnvIP::Environments, EnvIdent::Environm
     Sbelow   = fill(Vector{ITensor}(), length(H))
     next_col = side == :left ? col + 1 : col - 1
     for opcode in 1:length(H)
-        op_row         = side == :left ? H[opcode].sites[2][1] : H[opcode].sites[1][1] 
-        ops = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
-        ops            = is_gpu ? map(cuITensor, ops) : ops
-        this_op        = side == :left ? H[opcode].ops[2] : H[opcode].ops[1]
-        ops[op_row]    = replaceindex!(copy(this_op), H[opcode].site_ind, col_site_inds[op_row])
-        ops[op_row]    = replaceindex!(ops[op_row], H[opcode].site_ind', col_site_inds[op_row]')
-        AAs            = [A[row, col] * ops[row] * dag(A[row, col])' * EnvIP.InProgress[row, opcode] for row in 1:Ny]
+        op_row      = side == :left ? H[opcode].sites[2][1] : H[opcode].sites[1][1] 
+        ops         = map(x->spinI(x; is_gpu=is_gpu), col_site_inds)
+        ops         = is_gpu ? map(cuITensor, ops) : ops
+        this_op     = side == :left ? H[opcode].ops[2] : H[opcode].ops[1]
+        ops[op_row] = replaceindex!(copy(this_op), H[opcode].site_ind, col_site_inds[op_row])
+        ops[op_row] = replaceindex!(ops[op_row], H[opcode].site_ind', col_site_inds[op_row]')
+        AAs         = [A[row, col] * ops[row] * dag(A[row, col])' * EnvIP.InProgress[row, opcode] for row in 1:Ny]
         if (col > 1 && side == :right) || (col < Nx && side == :left)
             cis = [commonindex(A[row, col], A[row, next_col]) for row in 1:Ny]
             msi = [multiply_side_ident(AAs[row], cis[row], EnvIdent.I[row]) for row in 1:Ny]
@@ -216,7 +217,7 @@ function updateAncillarySide(A::PEPS, Sbelow, Ibelow::Vector{ITensor}, EnvIP::En
         this_op       = side == :left ? H[opcode].ops[2] : H[opcode].ops[1]
         ops[op_row]   = replaceindex!(copy(this_op), H[opcode].site_ind, col_site_inds[op_row])
         ops[op_row]   = replaceindex!(ops[op_row], H[opcode].site_ind', col_site_inds[op_row]')
-        AA            = A[row, col] * ops[row] * prime(dag(A[row, col]))
+        AA            = A[row, col] * ops[row] * dag(A[row, col]')
         if (col > 1 && side == :right) || (col < Nx && side == :left)
             ci  = commonindex(A[row, col], A[row, prev_col])
             msi = multiply_side_ident(AA, ci, EnvIdent.I[row])
