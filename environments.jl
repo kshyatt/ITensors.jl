@@ -9,10 +9,11 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
     up_combiners = Vector{ITensor}(undef, Ny-1)
     fake_next_combiners = Vector{ITensor}(undef, Ny)
     fake_prev_combiners = fill(1.0, Ny)
-    I_mpo  = buildNewI(A, col, fake_prev_combiners, fake_next_combiners, up_combiners, side)
+    I_mpo, fake_next_combiners, up_combiners = buildNewI(A, col, fake_prev_combiners, side)
+    orthogonalize!(I_mpo, 1; kwargs...)
     @debug "Built new I"
     copyto!(next_combiners, fake_next_combiners)
-    I_mps  = MPS(Ny, tensors(I_mpo), 0, Ny+1)
+    I_mps         = MPS(Ny, tensors(I_mpo), 0, Ny+1)
     field_H_terms = getDirectional(vcat(H[:, col]...), Field)
     vert_H_terms  = getDirectional(vcat(H[:, col]...), Vertical)
     vHs           = [buildNewVerticals(A, fake_prev_combiners, fake_next_combiners, up_combiners, vert_H_terms[vert_op], col) for vert_op in 1:length(vert_H_terms)]
@@ -37,16 +38,15 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
         in_progress[1:Ny, side_term] = generateEdgeDanglingBonds(A, up_combiners, side_H_terms[side_term], side, col)
     end
     @debug "Generated edge bonds"
-    orthogonalize!(I_mps, 1; kwargs...)
     return Environments(I_mps, H_overall, in_progress)
 end
 
-function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
+function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combiners::Vector{ITensor}, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)
     Ny, Nx = size(A)
     working_combiner = Vector{ITensor}(undef, Ny)
     up_combiners     = Vector{ITensor}(undef, Ny-1)
     @timeit "build I" begin
-        I_mpo            = buildNewI(A, col, previous_combiners, working_combiner, up_combiners, side)
+        I_mpo, working_combiner, up_combiners = buildNewI(A, col, previous_combiners, side)
     end
     @debug "Built I_mpo"
     copyto!(next_combiners, working_combiner)
@@ -57,8 +57,9 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
         replaceindex!(I_mpo[row+1], ci, ni)
     end
     @timeit "build new_I and new_H" begin
-        new_I         = applyMPO(I_mpo, prev_Env.I; kwargs...)
-        new_H         = applyMPO(I_mpo, prev_Env.H; kwargs...)
+        orthogonalize!(I_mpo, 1; kwargs...)
+        new_I     = applyMPO(I_mpo, prev_Env.I; kwargs...)
+        new_H     = applyMPO(I_mpo, prev_Env.H; kwargs...)
     end
     @debug "Built new I and H"
     field_H_terms = getDirectional(vcat(H[:, col]...), Field)
@@ -101,7 +102,7 @@ function buildNextEnvironment(A::PEPS, prev_Env::Environments, H, previous_combi
         end
     end
     @debug "Generated next dangling bonds"
-    return Environments(new_I, H_overall, in_progress)
+    return new_I, H_overall, in_progress
 end
 
 function buildNewVerticals(A::PEPS, previous_combiners::Vector, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H, col::Int)::MPO
@@ -134,32 +135,24 @@ function buildNewFields(A::PEPS, previous_combiners::Vector, next_combiners::Vec
     return MPO(Ny, AAs, 0, Ny+1)
 end
 
-function buildNewI(A::PEPS, col::Int, previous_combiners::Vector, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, side::Symbol)::MPO
-    Ny, Nx = size(A)
-    Iapp = MPO(Ny)
-    next_col = side == :left ? col + 1 : col - 1 # side is handedness of environment
+function buildNewI(A::PEPS, col::Int, previous_combiners::Vector, side::Symbol)::Tuple{MPO, Vector{ITensor}, Vector{ITensor}}
+    Ny, Nx         = size(A)
+    next_col       = side == :left ? col + 1 : col - 1 # side is handedness of environment
+    AA             = [A[row, col] * prime(dag(A[row, col]), "Link") for row in 1:Ny]
+    next_combiners = [combine(A[row, col], A[row, next_col], "Site,r$row,c$col") for row in 1:Ny]
+    up_combiners   = [combine(A[row, col], A[row+1, col], "Link,CMB,c$col,r$row") for row in 1:Ny-1]
+    AA = AA .* previous_combiners
+    AA = AA .* next_combiners
     @inbounds for row in 1:Ny
-        AA = A[row, col] * prime(dag(A[row, col]), "Link")
-        next_combiners[row], AA = combine(AA, A[row, col], A[row, next_col], "Site,r$row,c$col")
-        AA *= previous_combiners[row]
         if row > 1
-            AA *= up_combiners[row-1]
+            AA[row] *= up_combiners[row-1]
         end
         if row < Ny
-            up_combiners[row], AA = combine(AA, A[row, col], A[row+1, col], "Link,CMB,c$col,r$row")
+            AA[row] *= up_combiners[row]
         end
-        if col == 1 || col == Nx
-            @assert length(findinds(AA, "Site")) == 1
-            ind_count = (row == 1 || row == Ny) ? 2 : 3
-            @assert length(inds(AA)) == ind_count
-        else
-            @assert length(findinds(AA, "Site")) == 2
-            ind_count = (row == 1 || row == Ny) ? 3 : 4
-            @assert length(inds(AA)) == ind_count
-        end
-        Iapp[row] = AA
     end
-    return Iapp
+    Iapp   = MPO(Ny, AA, 0, Ny+1)
+    return Iapp, next_combiners, up_combiners
 end
 
 function generateEdgeDanglingBonds(A::PEPS, up_combiners::Vector{ITensor}, H, side::Symbol, col::Int)::Vector{ITensor}
@@ -249,9 +242,10 @@ function buildLs(A::PEPS, H; kwargs...)
         previous_combiners = [reconnect(commonindex(A[row, start_col], A[row, start_col - 1]), Ls[start_col-1].I[row]) for row in 1:Ny]
     end
     loop_col = start_col == 1 ? 2 : start_col
-    @inbounds for col in loop_col:Nx-1
+    @inbounds for col in loop_col:(Nx-1)
         @debug "Building left col $col"
-        Ls[col] = buildNextEnvironment(A, Ls[col-1], H, previous_combiners, next_combiners, :left, col; kwargs...)
+        I, H_, IP = buildNextEnvironment(A, Ls[col-1], H, previous_combiners, next_combiners, :left, col; kwargs...)
+        Ls[col]   = Environments(I, H_, IP)
         previous_combiners = deepcopy(next_combiners)
     end
     return Ls
@@ -269,10 +263,11 @@ function buildRs(A::PEPS, H; kwargs...)
     elseif start_col + 1 < Nx
         previous_combiners = [reconnect(commonindex(A[row, start_col], A[row, start_col + 1]), Rs[start_col+1].I[row]) for row in 1:Ny]
     end
-    loop_col = start_col == Nx ? Nx-1 : start_col
+    loop_col = start_col == Nx ? Nx - 1 : start_col
     @inbounds for col in reverse(2:loop_col)
         @debug "Building right col $col"
-        Rs[col]            = buildNextEnvironment(A, Rs[col+1], H, previous_combiners, next_combiners, :right, col; kwargs...)
+        I, H_, IP = buildNextEnvironment(A, Rs[col+1], H, previous_combiners, next_combiners, :right, col; kwargs...)
+        Rs[col]   = Environments(I, H_, IP)
         previous_combiners = deepcopy(next_combiners)
     end
     return Rs
