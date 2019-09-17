@@ -309,7 +309,6 @@ function storage_svd(Astore::Dense{T, S},
     MU,MS,MV = recursiveSVD(reshape(data(Astore),dim(Lis),dim(Ris)))
   end
   MV = conj!(MV)
-
   P = MS.^2
   #@printf "  Truncating with maxdim=%d cutoff=%.3E\n" maxdim cutoff
   truncate!(P;mindim=mindim,
@@ -379,7 +378,7 @@ end
 # for matrices
 function polar(A::AbstractMatrix)
   U,S,V = svd(A)
-  return U*V',V*Diagonal(S)*V'
+  return U*V', V*Diagonal(S)*V'
 end
 
 function storage_qr(Astore::Dense{S, T},

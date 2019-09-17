@@ -11,7 +11,7 @@ using ITensors, Test
         "test_diagITensor.jl",
         "test_combiner.jl",
         "test_trg.jl",
-        "test_ctmrg.jl",
+        #"test_ctmrg.jl",
         "test_dmrg.jl",
         "test_siteset.jl",
         "test_phys_sitesets.jl",

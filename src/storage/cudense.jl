@@ -13,55 +13,61 @@ function truncate!(P::CuVector{Float64};
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
   origm = length(P)
   docut = 0.0
-  maxP = maximum(P)
+  maxP  = maximum(P)
   if maxP == 0.0
     P = CuArrays.zeros(Float64, 1)
     return 0.,0.,P
   end
-
   if origm==1
     docut = maxP/2
     return 0., docut, P[1:1]
   end
 
-  #Zero out any negative weight
-  neg_z_f = (x -> x >= 0.0 ? x : 0.0)
-  P = map(neg_z_f, P)
-  rP = reverse(P) 
-  n = origm
-  truncerr = 0.0
-  if n >= maxdim
-      truncerr = sum(rP[1:n-maxdim])
-      n = maxdim
-  end
-  if absoluteCutoff
-    #Test if individual prob. weights fall below cutoff
-    #rather than using *sum* of discarded weights
-    err_rP = convert(CuVector{Float64}, rP .> cutoff)
-    # ararggmax finds the FIRST index of max value
-    cut_ind = argmax(err_rP)
-    cut_ind = cut_ind > n - mindim ? n - mindim : cut_ind
-    n = n - cut_ind
-    truncerr += sum(rP[1:cut_ind])
-  else
-    scale = 1.0
-    if doRelCutoff
-      scale = sum(P)
-      scale = scale > 0.0 ? scale : 1.0
-    end
-
-    #Continue truncating until *sum* of discarded probability 
-    #weight reaches cutoff reached (or m==mindim)
-    err_rP = convert(CuVector{Float64}, (rP .+ truncerr) .> cutoff*scale)
-    cut_ind = CuArrays.CUBLAS.iamax(err_rP) - 1
-    truncerr += sum(rP[1:cut_ind])
-    n = min(maxdim, length(P) - cut_ind)
-    n = max(n, mindim)
-    if scale==0.0
+  @timeit "setup rP" begin
+      #Zero out any negative weight
+      #neg_z_f = (!signbit(x) ? x : 0.0)
+      rP = map(x -> !signbit(x) ? x : 0.0, P)
+      #rP = reverse(P)
+      n = origm
       truncerr = 0.0
-    else
-      truncerr /= scale
-    end
+      if n >= maxdim
+          truncerr = sum(rP[1:n-maxdim])
+          n = maxdim
+      end
+  end
+  @timeit "handle cutoff" begin
+      if absoluteCutoff
+        #Test if individual prob. weights fall below cutoff
+        #rather than using *sum* of discarded weights
+        err_rP = inv.(rP .+ truncerr .- cutoff*scale)
+        cut_ind = CuArrays.CUBLAS.iamax(err_rP) - 1
+        n = min(maxdim, length(P) - cut_ind)
+        n = max(n, mindim)
+        truncerr += sum(rP[1:cut_ind])
+      else
+        scale = 1.0
+        @timeit "find scale" begin 
+            if doRelCutoff
+              scale = sum(P)
+              scale = scale > 0.0 ? scale : 1.0
+            end
+        end
+
+        #Continue truncating until *sum* of discarded probability 
+        #weight reaches cutoff reached (or m==mindim)
+        sub_arr = rP .+ truncerr .- cutoff*scale
+        err_rP  = sub_arr ./ abs.(sub_arr)
+        flags   = reinterpret(Float64, (signbit.(err_rP) .<< 1 .& 2) .<< 61)
+        cut_ind = CuArrays.CUBLAS.iamax(err_rP .* flags) - 1
+        truncerr += sum(rP[1:cut_ind])
+        n = min(maxdim, length(P) - cut_ind)
+        n = max(n, mindim)
+        if scale==0.0
+          truncerr = 0.0
+        else
+          truncerr /= scale
+        end
+      end
   end
   if n < 1
     n = 1
@@ -73,7 +79,11 @@ function truncate!(P::CuVector{Float64};
       docut += 1E-3*hP[n]
     end
   end
-  return truncerr,docut,P[1:n]
+  @timeit "setup return" begin
+      rinds = Iterators.reverse(1:n)
+      rrP = P[rinds]
+  end
+  return truncerr,docut,rrP
 end
 
 function storage_scalar(D::Dense{AT, A}) where {AT, A<:CuArray}
@@ -136,14 +146,17 @@ function storage_svd(Astore::Dense{T, S},
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
   absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
-  utags::String = get(kwargs,:utags,"Link,u")
-  vtags::String = get(kwargs,:vtags,"Link,v")
+  utags::String     = get(kwargs,:utags,"Link,u")
+  vtags::String     = get(kwargs,:vtags,"Link,v")
   rsd = reshape(data(Astore),dim(Lis),dim(Ris))
-  MU,MS,MV = CUSOLVER.svd(rsd)
-
+  @timeit "cusolver" begin
+      MU,MS,MV = CUSOLVER.svd(rsd)
+  end
   sqr(x) = x^2
   P = sqr.(MS)
-  err, cut, P = truncate!(P;mindim=mindim, maxdim=maxdim,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
+  @timeit "truncate!" begin
+      err, cut, P = truncate!(P; mindim=mindim, maxdim=maxdim, cutoff=cutoff, absoluteCutoff=absoluteCutoff, doRelCutoff=doRelCutoff)
+  end
   dS = length(P)
   if dS < length(MS)
     MU = MU[:,1:dS]
@@ -155,8 +168,8 @@ function storage_svd(Astore::Dense{T, S},
   v = settags(u,vtags)
   Uis,Ustore = IndexSet(Lis...,u),Dense{T, CuVector{T}}(vec(MU))
   #TODO: make a diag storage
-  Sdata = CuArrays.zeros(T, dS, dS)
-  dsi = diagind(Sdata, 0)
+  Sdata      = CuArrays.zeros(T, dS, dS)
+  dsi        = diagind(Sdata, 0)
   Sdata[dsi] = MS
   Sis,Sstore = IndexSet(u,v),Dense{T, CuVector{T}}(vec(Sdata))
   Vis,Vstore = IndexSet(Ris...,v),Dense{T, CuVector{T}}(CuVector{T}(vec(MV)))
@@ -165,34 +178,34 @@ function storage_svd(Astore::Dense{T, S},
 end
 
 function storage_eigen(Astore::Dense{S, T}, Lis::IndexSet,Ris::IndexSet;kwargs...) where {T<:CuArray,S<:Number}
-  maxdim::Int = get(kwargs,:maxdim,min(dim(Lis),dim(Ris)))
-  mindim::Int = get(kwargs,:mindim,1)
-  cutoff::Float64 = get(kwargs,:cutoff,0.0)
+  maxdim::Int          = get(kwargs,:maxdim,min(dim(Lis),dim(Ris)))
+  mindim::Int          = get(kwargs,:mindim,1)
+  cutoff::Float64      = get(kwargs,:cutoff,0.0)
   absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
-  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
-  tags::TagSet = get(kwargs,:lefttags,"Link,u")
-  lefttags::TagSet = get(kwargs,:lefttags,tags)
-  righttags::TagSet = get(kwargs,:righttags,prime(lefttags))
+  doRelCutoff::Bool    = get(kwargs,:doRelCutoff,true)
+  tags::TagSet         = get(kwargs,:lefttags,"Link,u")
+  lefttags::TagSet     = get(kwargs,:lefttags,tags)
+  righttags::TagSet    = get(kwargs,:righttags,prime(lefttags))
   
-  dim_left = dim(Lis)
-  dim_right = dim(Ris)
   local d_W, d_V
-  d_A = reshape(data(Astore),dim_left,dim_right)
+  dim_left  = dim(Lis)
+  dim_right = dim(Ris)
+  d_A       = reshape(data(Astore),dim_left,dim_right)
   if S <: Complex
-    d_W, d_V   = CUSOLVER.heevd!('V', 'U', d_A)
+    d_W, d_V = CUSOLVER.heevd!('V', 'U', d_A)
   else
-    d_W, d_V   = CUSOLVER.syevd!('V', 'U', d_A)
+    d_W, d_V = CUSOLVER.syevd!('V', 'U', d_A)
   end
   #TODO: include truncation parameters as keyword arguments
-  dW = reverse(d_W)
-  dV = reverse(d_V, dims=2)
-  err, cut, dW = truncate!(dW;maxdim=maxdim, mindim=mindim,
-              cutoff=cutoff,
-              absoluteCutoff=absoluteCutoff,
-              doRelCutoff=doRelCutoff)
+  #dW = reverse(d_W)
+  err, cut, dW = truncate!(d_W; maxdim=maxdim, mindim=mindim,
+                           cutoff=cutoff,
+                           absoluteCutoff=absoluteCutoff,
+                           doRelCutoff=doRelCutoff)
   dD = length(dW)
-  u = Index(dD,tags)
-  v = prime(u)
+  u  = Index(dD,tags)
+  v  = prime(u)
+  dV = reverse(d_V, dims=2)
   if dD < size(dV,2)
     dV = CuMatrix(dV[:,1:dD])
   end
@@ -222,12 +235,11 @@ function storage_qr(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet; kwargs...) 
 end
 
 function storage_polar(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet) where {T<:CuArray, S<:Number}
-  dim_left = dim(Lis)
-  dim_right = dim(Ris)
-  MQ,MP = polar(reshape(data(Astore),dim_left,dim_right))
+  dim_left   = dim(Lis)
+  dim_right  = dim(Ris)
+  MQ,MP      = polar(reshape(data(Astore),dim_left,dim_right))
   dim_middle = min(dim_left,dim_right)
-  #u = Index(dim_middle,"Link,u")
-  Uis = addtags(Ris,"u")
+  Uis        = prime(Ris)
   Qis,Qstore = IndexSet(Lis...,Uis...),Dense{S, T}(vec(MQ))
   Pis,Pstore = IndexSet(Uis...,Ris...),Dense{S, T}(vec(MP))
   return (Qis,Qstore,Pis,Pstore)
@@ -250,7 +262,7 @@ function storage_add!(Bstore::Dense{SB, T},Bis::IndexSet,Astore::Dense{SA, T},Ai
   for (idx, i) in enumerate(Bis)
       push!(ind_dict, i)
   end
-  id_op = CuTensor.CUTENSOR_OP_IDENTITY
+  id_op = CuArrays.CUTENSOR.CUTENSOR_OP_IDENTITY
   ctainds = zeros(Int, length(Ais))
   ctbinds = zeros(Int, length(Bis))
   for (ii, ia) in enumerate(Ais)
@@ -261,7 +273,7 @@ function storage_add!(Bstore::Dense{SB, T},Bis::IndexSet,Astore::Dense{SA, T},Ai
   end
   ctcinds = copy(ctbinds)
   C = CuArrays.zeros(SB, size(Bdata))
-  CuTensor.elementwiseBinary!(one(SA), Adata, Vector{Char}(ctainds), id_op, one(SB), Bdata, Vector{Char}(ctbinds), id_op, C, Vector{Char}(ctcinds), CuTensor.CUTENSOR_OP_ADD)
+  CuArrays.CUTENSOR.elementwiseBinary!(one(SA), Adata, Vector{Char}(ctainds), id_op, one(SB), Bdata, Vector{Char}(ctbinds), id_op, C, Vector{Char}(ctcinds), CUTENSOR.CUTENSOR_OP_ADD)
   copyto!(Bstore.data, reshape(C, length(Bdata)))
   return Bstore
 end
@@ -283,6 +295,17 @@ function storage_permute!(Bstore::Dense{SB, T},Bis::IndexSet,Astore::Dense{SB, T
   for (ii, ib) in enumerate(Bis)
       ctbinds[ii] = findfirst(x->x==ib, ind_dict)
   end
-  CuTensor.permutation!(one(eltype(Adata)), reshapeAdata, Vector{Char}(ctainds), reshapeBdata, Vector{Char}(ctbinds)) 
+  CuArrays.CUTENSOR.permutation!(one(eltype(Adata)), reshapeAdata, Vector{Char}(ctainds), reshapeBdata, Vector{Char}(ctbinds)) 
   copyto!(Bstore.data, reshape(reshapeBdata, length(Bstore.data)))
+end
+
+storage_convert(::Type{CuArray},D::Dense,is::IndexSet) = reshape(data(D),dims(is))
+
+function storage_convert(::Type{CuArray},
+                         D::Dense,
+                         ois::IndexSet,
+                         nis::IndexSet)
+  P = calculate_permutation(nis,ois)
+  A = reshape(data(D),dims(ois))
+  return permutedims(A,P)
 end

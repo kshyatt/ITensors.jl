@@ -130,8 +130,8 @@ function contract(Cinds::IndexSet,
   for (ii, ic) in enumerate(Cinds)
       ctcinds[ii] = findfirst(x->x==ic, ind_dict)
   end
-  id_op = CuTensor.CUTENSOR_OP_IDENTITY
-  CuTensor.contraction!(one(SA), Adata, Vector{Char}(ctainds), id_op, Bdata, Vector{Char}(ctbinds), id_op, one(SB), Cdata, Vector{Char}(ctcinds), id_op, id_op)
+  id_op = CuArrays.CUTENSOR.CUTENSOR_OP_IDENTITY
+  CuArrays.CUTENSOR.contraction!(one(SA), Adata, Vector{Char}(ctainds), id_op, Bdata, Vector{Char}(ctbinds), id_op, one(SB), Cdata, Vector{Char}(ctcinds), id_op, id_op)
   return Cstore
 end
 

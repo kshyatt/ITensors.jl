@@ -39,3 +39,22 @@ randomCuITensor(::Type{S},inds::Index...) where {S<:Number} = randomCuITensor(S,
 randomCuITensor(inds::IndexSet) = randomCuITensor(Float64,inds)
 randomCuITensor(inds::Index...) = randomCuITensor(Float64,IndexSet(inds...))
 
+CuArray(T::ITensor) = storage_convert(CuArray,store(T),inds(T))
+
+CuArray(T::ITensor,ninds::Index...) = storage_convert(CuArray,store(T),inds(T),IndexSet(ninds))
+
+function CuMatrix(A::ITensor,i1::Index,i2::Index)  
+  if ndims(A) != 2
+    throw(DimensionMismatch("Matrix() expected a 2-index ITensor"))
+  end
+  return CuArray(A,i1,i2)
+end
+
+CuMatrix(A::ITensor) = CuMatrix(A,inds(A)...)
+
+function CuVector(A::ITensor)
+  if ndims(A) != 1
+    throw(DimensionMismatch("Vector() expected a 1-index ITensor"))
+  end
+  return CuArray(A,inds(A)...)
+end

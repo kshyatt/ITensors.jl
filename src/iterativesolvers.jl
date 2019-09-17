@@ -23,7 +23,7 @@ function get_vecs!((phi,q),M,V,AV,ni)
     #q *= -1
     scale!(q,-1)
   end
-  return lambda
+  return lambda, phi
 end
 
 function orthogonalize!(q::ITensor,V,ni)
@@ -41,50 +41,47 @@ function orthogonalize!(q::ITensor,V,ni)
     qnrm = norm(q)
   end
   scale!(q,1.0/qnrm)
-  return 
+  return q
 end
 
-function davidson(A,
-                  phi0::ITensor;
-                  kwargs...)::Tuple{Float64,ITensor}
-
-  phi = copy(phi0)
-  maxiter = get(kwargs,:maxiter,2)
-  miniter = get(kwargs,:maxiter,1)
-  errgoal = get(kwargs,:errgoal,1E-14)
+function davidson(A, phi0::ITensor; kwargs...)::Tuple{Float64,ITensor}
+  phi         = deepcopy(phi0)
+  maxiter     = get(kwargs,:maxiter,2)
+  miniter     = get(kwargs,:maxiter,1)
+  errgoal     = get(kwargs,:errgoal,1E-14)
   Northo_pass = get(kwargs,:Northo_pass,1)
 
-  approx0 = 1E-12
+  approx0     = 1E-12
 
   nrm = norm(phi)
   if nrm < 1E-18 
     phi = randomITensor(inds(phi))
     nrm = norm(phi)
   end
-  scale!(phi,1.0/nrm)
+  scale!(phi, 1.0/nrm)
 
-  maxsize = size(A)[1]
-  actual_maxiter = min(maxiter,maxsize-1)
+  maxsize        = size(A)[1]
+  actual_maxiter = min(maxiter, maxsize-1)
 
   #if dim(inds(phi)) != maxsize
   #  error("linear size of A and dimension of phi should match in davidson")
   #end
 
-  V = ITensor[copy(phi)]
+  V  = ITensor[copy(phi)]
   AV = ITensor[noprime(A*phi)]
 
   last_lambda = NaN
-  lambda = dot(V[1],AV[1])
-  q = AV[1] - lambda*V[1]
-  M = fill(lambda,(1,1))
-
+  lambda      = dot(V[1], AV[1])
+  q           = AV[1] - lambda*V[1]
+  M           = fill(lambda,(1,1))
+  #@show lambda
   for ni=1:actual_maxiter
 
     qnorm = norm(q)
 
     errgoal_reached = (qnorm < errgoal && abs(lambda-last_lambda) < errgoal)
-    small_qnorm = (qnorm < max(approx0,errgoal*1E-3))
-    converged = errgoal_reached || small_qnorm
+    small_qnorm     = (qnorm < max(approx0,errgoal*1E-3))
+    converged       = errgoal_reached || small_qnorm
 
     if (qnorm < 1E-20) || (converged && ni > miniter) #|| (ni >= actual_maxiter)
       #@printf "  done with davidson, ni=%d, qnorm=%.3E\n" ni qnorm
@@ -94,11 +91,11 @@ function davidson(A,
     last_lambda = lambda
 
     for pass = 1:Northo_pass
-      orthogonalize!(q,V,ni)
+      q = orthogonalize!(q, V, ni)
     end
 
-    push!(V,copy(q))
-    push!(AV,noprime(A*q))
+    push!(V,  copy(q))
+    push!(AV, noprime(A*q))
     newM = fill(0.0,(ni+1,ni+1))
     newM[1:ni,1:ni] = M
     for k=1:ni+1
@@ -107,10 +104,10 @@ function davidson(A,
     end
     M = newM
 
-    lambda = get_vecs!((phi,q),M,V,AV,ni+1)
-
+    lambda, phi = get_vecs!((phi,q),M,V,AV,ni+1)
   end #for ni=1:actual_maxiter+1
-  return lambda,phi
-
+  #nrm = norm(phi)
+  #scale!(phi, 1.0/nrm)
+  return lambda, phi
 end
 

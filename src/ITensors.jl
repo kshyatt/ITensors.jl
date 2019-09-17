@@ -3,6 +3,7 @@ module ITensors
 using Random,
       Printf,
       LinearAlgebra,
+      TimerOutputs,
       StaticArrays # For SmallString
 
 # TODO: move imports to individual files

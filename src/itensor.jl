@@ -208,7 +208,6 @@ size(A::ITensor, d::Int) = d in 1:ndims(A) ? dim(inds(A)[d]) :
 copy(T::ITensor) = ITensor(copy(inds(T)),copy(store(T)))
 
 Array(T::ITensor) = storage_convert(Array,store(T),inds(T))
-CuArray(T::ITensor) = storage_convert(CuArray,store(T),inds(T))
 
 Array(T::ITensor,ninds::Index...) = storage_convert(Array,store(T),inds(T),IndexSet(ninds))
 

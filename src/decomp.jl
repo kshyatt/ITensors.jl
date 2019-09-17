@@ -13,13 +13,13 @@ function truncate!(P::Vector{Float64};
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
   origm = length(P)
   docut = 0.0
-
   if P[1]<=0.0
     P[1] = 0.0
     resize!(P,1)
     return 0.,0.
   end
 
+  #println("hello from truncate, origm=$origm, P=$P")
   if origm==1
     docut = P[1]/2
     return 0.,docut
@@ -74,7 +74,6 @@ function truncate!(P::Vector{Float64};
     end
   end
   resize!(P,n)
-
   return truncerr,docut
 end
 
@@ -106,12 +105,16 @@ function qr(A::ITensor,
   return Q,R,commonindex(Q,R)
 end
 
-function polar(A::ITensor, Linds...)
-  A,Lis,Ris = _permute_for_factorize(A,Linds...)
-  Qis,Qstore,Pis,Pstore = storage_polar(store(A),Lis,Ris)
-  Q = ITensor(Qis,Qstore)
-  P = ITensor(Pis,Pstore)
-  return Q,P,commoninds(Q,P)
+function polar(A::ITensor, Linds...; kwargs...)
+  #A,Lis,Ris = _permute_for_factorize(A,Linds...)
+  U,S,V,u,v = svd(A,Linds...; kwargs...)
+  U = replaceindex!(U, u, v)
+  F = U*V
+  G = V*S*V'
+  return F, G
+  #Q = ITensor(Qis,Qstore)
+  #P = ITensor(Pis,Pstore)
+  #return Q,P,commoninds(Q,P)
 end
 
 import LinearAlgebra.svd
@@ -193,9 +196,9 @@ function _factorize_from_left_eigen(A::ITensor,
                                     Linds...; 
                                     kwargs...)
   A,Lis,Ris = _permute_for_factorize(A,Linds...)
-  A² = A*prime(dag(A),Lis)
+  A²   = A*prime(dag(A),Lis)
   FU,D = eigen(A²,Lis,prime(Lis);kwargs...)
-  FV = dag(FU)*A
+  FV   = dag(FU)*A
   return FU,FV,commonindex(FU,FV)
 end
 
@@ -203,9 +206,9 @@ function _factorize_from_right_eigen(A::ITensor,
                                      Linds...; 
                                      kwargs...)
   A,Lis,Ris = _permute_for_factorize(A,Linds...)
-  A² = A*prime(dag(A),Ris)
+  A²   = A*prime(dag(A),Ris)
   FV,D = eigen(A²,Ris,prime(Ris); kwargs...)
-  FU = A*dag(FV)
+  FU   = A*dag(FV)
   return FU,FV,commonindex(FU,FV)
 end
 
