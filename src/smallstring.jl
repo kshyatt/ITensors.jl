@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+=======
+export convert,
+       setindex,
+       read
+>>>>>>> 38e6b03... Added Base.read overload for SmallString, supporting format="cpp"
 
 const IntChar = UInt8
 const IntSmallString = UInt64
@@ -111,3 +117,16 @@ function Base.show(io::IO, s::SmallString)
   end
 end
 
+function Base.read(io::IO,::Type{SmallString}; kwargs...)
+  format = get(kwargs,:format,"hdf5")
+  s = SmallString()
+  if format=="cpp"
+    for n=1:7
+      c = read(io,Char)
+      s = setindex(s,c,n)
+    end
+  else
+    throw(ArgumentError("read SmallString: format=$format not supported"))
+  end
+  return s
+end
