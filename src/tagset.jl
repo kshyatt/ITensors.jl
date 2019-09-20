@@ -1,5 +1,6 @@
 export TagSet
 
+
 const Tag = SmallString
 const MTagStorage = MSmallStringStorage # A mutable tag storage
 const IntTag = IntSmallString  # An integer that can be cast to a Tag
@@ -257,6 +258,22 @@ function show(io::IO, T::TagSet)
   print(io,primestring(T))
 end
 
-export addtags,
-       hastags,
-       Tag
+function Base.read(io::IO,::Type{TagSet}; kwargs...)
+  format = get(kwargs,:format,"hdf5")
+  ts = TagSet()
+  if format=="cpp"
+    mstore = MTagSetStorage(ntuple(_ -> IntTag(0),Val(maxTags)))
+    ntags = 0
+    for n=1:4
+      t = read(io,Tag;kwargs...)
+      if t != Tag()
+        ntags = _addtag_ordered!(mstore,ntags,IntSmallString(t))
+      end
+    end
+    plev = convert(Int,read(io,Int32))
+    ts = TagSet(TagSetStorage(mstore),plev,ntags)
+  else
+    throw(ArgumentError("read TagSet: format=$format not supported"))
+  end
+  return ts
+end
