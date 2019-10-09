@@ -332,68 +332,6 @@ function buildN(A::PEPS, L::Environments, R::Environments, IEnvs, row::Int, col:
     return workingN
 end
 
-function measureNdumb(A::PEPS)::Float64
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    nrm    = ITensor(1.0)
-    for row in 1:Ny, col in 1:Nx
-        nrm *= A[row, col] * dag(prime(A[row, col], "Link"))
-    end
-    return scalar(nrm)
-end
-
-function measureNlessdumb(A::PEPS, R, L, col)::Float64
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    nrm    = ITensor(1.0)
-    if col > 1
-        cis = [commonindex(A[row, col], A[row, col-1]) for row in 1:Ny]
-        nrm *= prod([multiply_side_ident(A[row, col], cis[row], L.I[row]) for row in 1:Ny])
-    end
-    if col < Nx
-        cis = [commonindex(A[row, col], A[row, col+1]) for row in 1:Ny]
-        nrm *= prod([multiply_side_ident(A[row, col], cis[row], R.I[row]) for row in 1:Ny])
-    end
-    for row in 1:Ny
-        nrm *= A[row, col] * dag(prime(A[row, col], "Link"))
-    end
-    return scalar(nrm)
-end
-
-function measureNdumbL(A::PEPS, L::MPS, col::Int)::Float64
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    cis = [commonindex(A[row, col], A[row, col-1]) for row in 1:Ny]
-    nrm = prod([multiply_side_ident(A[row, col], cis[row], L[row]) for row in 1:Ny])
-    for row in 1:Ny, col_ in col:Nx
-        nrm *= A[row, col_] * dag(prime(A[row, col_], "Link"))
-    end
-    return scalar(nrm)
-end
-
-function measureNdumbR(A::PEPS, R::MPS, col::Int)::Float64
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    cis = [commonindex(A[row, col], A[row, col+1]) for row in 1:Ny]
-    nrm = prod([multiply_side_ident(A[row, col], cis[row], R[row]) for row in 1:Ny])
-    for row in 1:Ny, col_ in reverse(1:col)
-        nrm *= A[row, col_] * dag(prime(A[row, col_], "Link"))
-    end
-    return scalar(nrm)
-end
-
-function Ndumb(A::PEPS, row::Int, col::Int)::ITensor
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    nrm = ITensor(1.0)
-    for wrow in 1:Ny, wcol in 1:Nx
-        if wrow != row && wcol != col
-            nrm *= A[wrow, wcol] * dag(prime(A[wrow, wcol], "Link"))
-        end
-    end
-    return nrm
-end
-
 
 function multiply_side_ident(A::ITensor, ci::Index, side_I::ITensor)
     is_gpu  = !(data(store(A)) isa Array)
@@ -969,7 +907,6 @@ function intraColumnGauge(A::PEPS, col::Int; kwargs...)::PEPS
 end
 
 function simpleUpdate(A::PEPS, col::Int, next_col::Int, H; kwargs...)::PEPS
-    println("YIKES")
     do_side::Bool = get(kwargs, :do_side, true)
     τ::Float64    = get(kwargs, :tau, -0.1)
     Ny, Nx = size(A)
@@ -1134,9 +1071,8 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
         localH = sum(Hs)
     end
     initial_E = real(scalar(A[row, col] * localH * dag(A[row, col])'))
-    println()
-    println("Initial energy at row $row col $col : $(initial_E/(initial_N*Nx*Ny))")
-    println("Initial norm at row $row col $col : $initial_N")
+    @info "Initial energy at row $row col $col : $(initial_E/(√(initial_N)*Nx*Ny))"
+    @info "Initial norm at row $row col $col : $initial_N"
     @debug "\tBeginning davidson for col $col row $row"
     @timeit "davidson" begin
        λ, new_A = davidson(localH, A[row, col]; kwargs...)
@@ -1144,13 +1080,13 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
     new_E = real(scalar(new_A * localH * dag(new_A)'))
     new_N = real(scalar(new_A * N * dag(new_A)'))
     if new_E/new_N > initial_E/initial_N
-        #println("badness")
+        @info "badness"
         new_A = deepcopy(A[row, col])
         new_E = real(scalar(new_A * localH * dag(new_A)'))
         new_N = real(scalar(new_A * N * dag(new_A)'))
     end
-    println("Optimized energy at row $row col $col : $(new_E/(new_N*Nx*Ny))")
-    println("Optimized norm at row $row col $col : $new_N")
+    @info "Optimized energy at row $row col $col : $(new_E/(√(new_N)*Nx*Ny))"
+    @info "Optimized norm at row $row col $col : $new_N"
     @timeit "restore intra col gauge" begin
         if row < Ny
             @debug "\tRestoring intraColumnGauge for col $col row $row"
@@ -1188,7 +1124,7 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
                 AncEnvs[:I][:above][end - row] = newAA * AncEnvs[:I][:above][end - row - 1]
             end
         else
-            A[row, col] = initial_N > 0 ? new_A/√initial_N : new_A
+            A[row, col] = initial_N > 0 ? new_A/√new_N : new_A
         end
     end
     return A, AncEnvs
@@ -1209,7 +1145,13 @@ function sweepColumn(A::PEPS, L::Environments, R::Environments, H, col::Int; kwa
     @timeit "intra column gauge" begin
         A = intraColumnGauge(A, col; kwargs...)
     end
-    
+    if col == div(Nx,2)# || col == Nx 
+        L_s = buildLs(A, H; kwargs...)
+        R_s = buildRs(A, H; kwargs...)
+        EAncEnvs = buildAncs(A, L_s[col - 1], R_s[col + 1], H, col)
+        N, E = measureEnergy(A, L_s[col - 1], R_s[col + 1], EAncEnvs, H, 1, col)
+        println("Energy at mid:", E/(Nx*Ny))
+    end
     @debug "Beginning buildAncs for col $col" 
     local AncEnvs
     @timeit "build ancenvs" begin
@@ -1254,7 +1196,6 @@ function rightwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environmen
             # Gauge
             A = gaugeColumn(A, col, :right; kwargs...)
         end
-        println()
         if col == 1
             left_H_terms = getDirectional(H[1], Horizontal)
             @timeit "left edge env" begin
@@ -1284,7 +1225,7 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
         @debug "Sweeping col $col"
         if sweep >= simple_update_cutoff
             @timeit "sweep" begin
-                A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
+                #A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
             end
         end
         if sweep < simple_update_cutoff
@@ -1295,7 +1236,6 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
             # Gauge
             A = gaugeColumn(A, col, :left; kwargs...)
         end
-        println()
         if col == Nx
             right_H_terms = getDirectional(H[Nx - 1], Horizontal)
             @timeit "right edge env" begin
@@ -1304,7 +1244,7 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
         else
             @timeit "right next env" begin
                 I, H_, IP = buildNextEnvironment(A, Rs[col+1], H, prev_cmb_l, next_cmb_l, :right, col; kwargs...)
-                Rs[col] = Environments(I, H_, IP)
+                Rs[col]   = Environments(I, H_, IP)
             end
             prev_cmb_l = deepcopy(next_cmb_l)
         end
