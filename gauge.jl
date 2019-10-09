@@ -38,7 +38,8 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
     iter          = 1
     dummy_nexts   = [Index(dim(next_col_inds[row]), "DM,Site,r$row") for row in 1:Ny]
     cmb_l = Vector{ITensor}(undef, Ny)
-    for iter in 1:100
+    iter = 0
+    while best_overlap < overlap_cutoff 
         thisTerm  = Vector{ITensor}(undef, Ny)
         thisfTerm = Vector{ITensor}(undef, Ny)
         Envs      = is_gpu ? [cuITensor(1.0) for row in 1:Ny] : [ITensor(1.0) for row in 1:Ny]
@@ -83,7 +84,7 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
             end
         end
         @timeit "Q*A -> R" begin
-            R           = nmultMPO(Q, Ampo; kwargs...)
+            R           = nmultMPO(dag(Q), Ampo; kwargs...)
         end
         @timeit "compute overlap" begin
             aqr_overlap = is_gpu ? cuITensor(1.0) : ITensor(1.0)
@@ -110,15 +111,17 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
             best_overlap = ratio
         end
         ratio > overlap_cutoff && break
+        iter > 500 && break
         if iter > 10 && mod(iter, 5) == 0 && best_overlap < 0.6
             for row in 1:Ny
                 salt    = randomITensor(inds(Q[row]))
-                Q[row] += salt/(scalar(salt*salt))
+                Q[row] += salt/(scalar(dag(salt)*salt))
                 Q[row] /= sqrt(norm(Q[row])) 
             end
         end
+        iter += 1
     end
-    @show best_overlap
+    @info best_overlap
     return best_Q, best_R, next_col_inds, QR_inds, dummy_nexts
 end
 
