@@ -58,6 +58,7 @@ const warnTensorOrder = 14
 #####################################
 
 include("smallstring.jl")
+include("readwrite.jl")
 include("tagset.jl")
 include("index.jl")
 include("indexset.jl")
