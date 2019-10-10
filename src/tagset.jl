@@ -2,10 +2,11 @@ export TagSet
 
 
 const Tag = SmallString
+const maxTags = 4
 const MTagStorage = MSmallStringStorage # A mutable tag storage
 const IntTag = IntSmallString  # An integer that can be cast to a Tag
-const TagSetStorage = SVector{4,IntTag}
-const MTagSetStorage = MVector{4,IntTag}  # A mutable tag storage
+const TagSetStorage = SVector{maxTags,IntTag}
+const MTagSetStorage = MVector{maxTags,IntTag}  # A mutable tag storage
 
 struct TagSet
   tags::TagSetStorage
