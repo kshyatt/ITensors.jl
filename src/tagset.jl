@@ -2,10 +2,11 @@ export TagSet
 
 
 const Tag = SmallString
+const maxTags = 4
 const MTagStorage = MSmallStringStorage # A mutable tag storage
 const IntTag = IntSmallString  # An integer that can be cast to a Tag
-const TagSetStorage = SVector{4,IntTag}
-const MTagSetStorage = MVector{4,IntTag}  # A mutable tag storage
+const TagSetStorage = SVector{maxTags,IntTag}
+const MTagSetStorage = MVector{maxTags,IntTag}  # A mutable tag storage
 
 struct TagSet
   tags::TagSetStorage
@@ -267,7 +268,8 @@ function Base.read(io::IO,::Type{TagSet}; kwargs...)
     for n=1:4
       t = read(io,Tag;kwargs...)
       if t != Tag()
-        ntags = _addtag_ordered!(mstore,ntags,IntSmallString(t))
+        it = IntSmallString(t)
+        ntags = _addtag_ordered!(mstore,ntags,it)
       end
     end
     plev = convert(Int,read(io,Int32))

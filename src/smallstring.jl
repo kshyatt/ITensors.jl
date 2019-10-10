@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-=======
 export convert,
        setindex,
        read
->>>>>>> 38e6b03... Added Base.read overload for SmallString, supporting format="cpp"
 
 const IntChar = UInt8
 const IntSmallString = UInt64
@@ -51,6 +48,12 @@ end
 function SmallString(i::IntSmallString)
   SmallString(unsafe_load(convert(Ptr{SmallStringStorage},pointer_from_objref(MVector{1,IntSmallString}(ntoh(i))))))
 end
+
+
+function IntSmallString(s::SmallString)
+  return cast_to_uint64(s.data)
+end
+
 
 # Cast to IntSmallString:
 function cast_to_uint64(a)

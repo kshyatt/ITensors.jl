@@ -6,9 +6,10 @@ end
 
 function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{ITensor}, side::Symbol, col::Int; kwargs...)::Environments
     Ny, Nx = size(A)
+    is_gpu       = !(data(store(A[1,1])) isa Array)
     up_combiners = Vector{ITensor}(undef, Ny-1)
     fake_next_combiners = Vector{ITensor}(undef, Ny)
-    fake_prev_combiners = fill(1.0, Ny)
+    fake_prev_combiners = fill(ITensor(1.0), Ny)
     I_mpo, fake_next_combiners, up_combiners = buildNewI(A, col, fake_prev_combiners, side)
     orthogonalize!(I_mpo, 1; kwargs...)
     @debug "Built new I"

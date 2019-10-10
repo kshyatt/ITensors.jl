@@ -48,6 +48,7 @@ end
 include("environments.jl")
 include("ancillaries.jl")
 include("gauge.jl")
+include("observables.jl")
 
 function cudelt(left::Index, right::Index)
     d_data   = CuArrays.zeros(Float64, dim(left), dim(right))
@@ -156,7 +157,7 @@ getDirectional(ops::Vector{Operator}, dir::Op_Type) = collect(filter(x->x.dir==d
 function spinI(s::Index; is_gpu::Bool=false)::ITensor
     I_data      = is_gpu ? CuArrays.zeros(Float64, dim(s), dim(s)) : zeros(Float64, dim(s), dim(s))
     idi         = diagind(I_data, 0)
-    I_data[idi] = CuArrays.ones(Float64, dim(s))
+    I_data[idi] = is_gpu ? CuArrays.ones(Float64, dim(s)) : ones(Float64, dim(s))
     I           = is_gpu ? cuITensor( vec(I_data), IndexSet(s, s') ) : ITensor(vec(I_data), IndexSet(s, s'))
     return I
 end
@@ -166,7 +167,6 @@ function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
     Z = ITensor(s, s')
     Z[s(1), s'(1)] = 0.5
     Z[s(2), s'(2)] = -0.5
-    Ident = spinI(s)
     P = ITensor(s, s')
     M = ITensor(s, s')
     P[s(1), s'(2)] = 1.0
@@ -824,6 +824,7 @@ function buildLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, row:
     @timeit "build Ns" begin
         N   = buildN(A, L, R, AncEnvs[:I], row, col)
     end
+    den = scalar(A[row, col] * N * dag(A[row, col])')
     local left_H_terms, right_H_terms
     if col > 1
         left_H_terms = getDirectional(vcat(H[:, col - 1]...), Horizontal)
@@ -838,17 +839,37 @@ function buildLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, row:
     end
     Hs = Vector{ITensor}(undef, term_count)
     term_counter = 1
+    @debug "\t\tBuilding I*H and H*I row $row col $col"
+    @timeit "build HIs" begin
+        HIs = buildHIs(A, L, R, row, col)
+        Hs[term_counter:term_counter+length(HIs)-1] = HIs
+        term_counter += length(HIs)
+        #println("--- HI TERMS ---")
+        for HI in HIs
+            hit = scalar(A[row, col] * HI * dag(A[row, col]'))
+            @assert abs(imag(hit)) < 1e-10 "col: $col, row: $row, $hit"
+            #println(scalar(A[row, col] * HI * dag(A[row, col])'/den))
+        end
+    end
     @debug "\t\tBuilding vertical H terms row $row col $col"
     @timeit "build vertical terms" begin
         vTs = verticalTerms(A, L, R, AncEnvs[:I], AncEnvs[:V], vert_H_terms, row, col) 
         Hs[term_counter:term_counter+length(vTs) - 1] = vTs
         term_counter += length(vTs)
+        #=println( "--- vT TERMS ---")
+        for vT in vTs
+            println(scalar(A[row, col] * vT * dag(A[row, col])'/den))
+        end=#
     end
     @debug "\t\tBuilding field H terms row $row col $col"
     @timeit "build field terms" begin
         fTs = fieldTerms(A, L, R, AncEnvs[:I], AncEnvs[:F], field_H_terms, row, col)
         Hs[term_counter:term_counter+length(fTs) - 1] = fTs[:]
         term_counter += length(fTs)
+        #=println( "--- fT TERMS ---")
+        for fT in fTs
+            println(scalar(A[row, col] * fT * dag(A[row, col])'/den))
+        end=#
     end
     if col > 1
         @debug "\t\tBuilding left H terms row $row col $col"
@@ -865,18 +886,12 @@ function buildLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, row:
             rTs = connectRightTerms(A, L, R, AncEnvs[:I], AncEnvs[:R], right_H_terms, row, col)
             Hs[term_counter:term_counter+length(rTs) - 1] = rTs[:]
             term_counter += length(rTs)
+            #=println( "--- rT TERMS ---")
+            for rT in rTs
+                println(scalar(A[row, col] * rT * dag(A[row, col])'/den))
+            end=#
         end
         @debug "\t\tBuilt right terms"
-    end
-    @debug "\t\tBuilding I*H and H*I row $row col $col"
-    @timeit "build HIs" begin
-        HIs = buildHIs(A, L, R, row, col)
-        Hs[term_counter:term_counter+length(HIs)-1] = HIs
-        term_counter += length(HIs)
-        for HI in HIs
-            hit = scalar(A[row, col] * HI * dag(A[row, col]'))
-            @assert abs(imag(hit)) < 1e-10 "col: $col, row: $row, $hit"
-        end
     end
     return Hs, N
 end
@@ -991,7 +1006,7 @@ function buildAncs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Is = (above=Ia, below=Ib)
 
     @debug "\tMaking ancillary vertical terms for col $col"
-    vH  = getDirectional(vcat(H[:, col]...), Vertical)
+    vH = getDirectional(vcat(H[:, col]...), Vertical)
     Va = makeAncillaryVs(A, L, R, vH, col)
     Vb = [Vector{ITensor}() for ii in 1:length(Va)]
     Vs = (above=Va, below=Vb)
@@ -1070,13 +1085,11 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
     @timeit "sum H terms" begin
         localH = sum(Hs)
     end
-    initial_E = real(scalar(A[row, col] * localH * dag(A[row, col])'))
-    @info "Initial energy at row $row col $col : $(initial_E/(√(initial_N)*Nx*Ny))"
-    @info "Initial norm at row $row col $col : $initial_N"
+    initial_E = real(scalar(A[row, col] * deepcopy(localH) * dag(A[row, col])'))
+    @info "Initial energy at row $row col $col : $(initial_E/(initial_N*Nx*Ny)) and norm : $initial_N"
+    #println("Initial energy at row $row col $col : $(initial_E) and  norm : $initial_N")
     @debug "\tBeginning davidson for col $col row $row"
-    @timeit "davidson" begin
-       λ, new_A = davidson(localH, A[row, col]; kwargs...)
-    end
+    λ, new_A = davidson(localH, A[row, col]; miniter=2, kwargs...)
     new_E = real(scalar(new_A * localH * dag(new_A)'))
     new_N = real(scalar(new_A * N * dag(new_A)'))
     if new_E/new_N > initial_E/initial_N
@@ -1085,12 +1098,11 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
         new_E = real(scalar(new_A * localH * dag(new_A)'))
         new_N = real(scalar(new_A * N * dag(new_A)'))
     end
-    @info "Optimized energy at row $row col $col : $(new_E/(√(new_N)*Nx*Ny))"
-    @info "Optimized norm at row $row col $col : $new_N"
-    @timeit "restore intra col gauge" begin
+    @info "Optimized energy at row $row col $col : $(new_E/(new_N*Nx*Ny)) and norm : $new_N"
+    #println("Optimized energy at row $row col $col : $(new_E) and  norm : $new_N")
         if row < Ny
             @debug "\tRestoring intraColumnGauge for col $col row $row"
-            cmb_is   = IndexSet(findindex(new_A, "Site"))
+            cmb_is   = IndexSet(findindex(A[row, col], "Site"))
             if col > 1
                 push!(cmb_is, commonindex(A[row, col], A[row, col - 1]))
             end
@@ -1104,12 +1116,16 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
                 push!(Lis, commonindex(A[row, col], A[row - 1, col]))
             end
             old_ci = commonindex(A[row, col], A[row+1, col])
-            U, V   = factorize(new_A*cmb, Lis; dir="fromleft", which_factorization="svd", tags="Link,u,c$col,r$row", kwargs...)
-            new_ci = commonindex(U, V)
-            A[row, col]    = replaceindex!(U, new_ci, old_ci)
-            A[row, col]   *= cmb
-            A[row+1, col] *= V
-            A[row+1, col]  = replaceindex!(A[row+1, col], new_ci, old_ci)
+            #U, V   = factorize(new_A*cmb, Lis; dir="fromleft", which_factorization="svd", tags="Link,u,c$col,r$row", kwargs...)
+            svdA = new_A*cmb
+            Ris = uniqueinds(inds(svdA), Lis) 
+            U, S, V = svd(svdA, Ris; kwargs...)
+            new_ci = commonindex(V, S)
+            replaceindex!(V, new_ci, old_ci)
+            A[row, col]    = V*cmb 
+            newU = S*U*A[row+1, col]
+            replaceindex!(newU, new_ci, old_ci)
+            A[row+1, col] = newU
             if row < Ny - 1
                 nI    = spinI(findindex(A[row+1, col], "Site"); is_gpu=is_gpu)
                 newAA = A[row+1, col] * nI * dag(A[row+1, col])'
@@ -1126,7 +1142,6 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
         else
             A[row, col] = initial_N > 0 ? new_A/√new_N : new_A
         end
-    end
     return A, AncEnvs
 end
 
@@ -1142,9 +1157,7 @@ end
 function sweepColumn(A::PEPS, L::Environments, R::Environments, H, col::Int; kwargs...)
     Ny, Nx = size(A)
     @debug "Beginning intraColumnGauge for col $col" 
-    @timeit "intra column gauge" begin
-        A = intraColumnGauge(A, col; kwargs...)
-    end
+    A = intraColumnGauge(A, col; kwargs...)
     if col == div(Nx,2)# || col == Nx 
         L_s = buildLs(A, H; kwargs...)
         R_s = buildRs(A, H; kwargs...)
@@ -1153,21 +1166,14 @@ function sweepColumn(A::PEPS, L::Environments, R::Environments, H, col::Int; kwa
         println("Energy at mid:", E/(Nx*Ny))
     end
     @debug "Beginning buildAncs for col $col" 
-    local AncEnvs
-    @timeit "build ancenvs" begin
-        AncEnvs = buildAncs(A, L, R, H, col)
-    end
+    AncEnvs = buildAncs(A, L, R, H, col)
     @inbounds for row in 1:Ny
         if row > 1
             @debug "Beginning updateAncs for col $col" 
-            @timeit "update ancenvs" begin
-                AncEnvs = updateAncs(A, L, R, AncEnvs, H, row-1, col)
-            end
+            AncEnvs = updateAncs(A, L, R, AncEnvs, H, row-1, col)
         end
         @debug "Beginning optimizing H for col $col" 
-        @timeit "optimize H" begin
-            A, AncEnvs = optimizeLocalH(A, L, R, AncEnvs, H, row, col; kwargs...)
-        end
+        A, AncEnvs = optimizeLocalH(A, L, R, AncEnvs, H, row, col; kwargs...)
     end
     return A
 end
@@ -1225,7 +1231,7 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
         @debug "Sweeping col $col"
         if sweep >= simple_update_cutoff
             @timeit "sweep" begin
-                #A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
+                A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
             end
         end
         if sweep < simple_update_cutoff

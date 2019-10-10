@@ -109,8 +109,11 @@ function polar(A::ITensor, Linds...; kwargs...)
   #A,Lis,Ris = _permute_for_factorize(A,Linds...)
   U,S,V,u,v = svd(A,Linds...; kwargs...)
   U = replaceindex!(U, u, v)
+  #@show U
+  #@show V
   F = U*V
   G = V*S*V'
+  #@show F
   return F, G
   #Q = ITensor(Qis,Qstore)
   #P = ITensor(Pis,Pstore)

@@ -21,6 +21,7 @@ end
 
 function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
     overlap_cutoff::Real = get(kwargs, :overlap_cutoff, 1e-4)
+    maxiter::Int         = get(kwargs, :maxiter, 50)
     Ny, Nx = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
     prev_col_inds = Vector{Index}(undef, Ny)
@@ -67,10 +68,10 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
         @timeit "polar decomp" begin
             for row in 1:Ny
                 if row < Ny
-                    Q_, P_ = polar(Envs[row], QR_inds[row], commonindex(Q[row], Q[row+1]))
+                    Q_, P_ = polar(Envs[row], QR_inds[row], commonindex(Q[row], Q[row+1]); kwargs...)
                     Q[row] = deepcopy(noprime(Q_))
                 else
-                    Q_, P_ = polar(Envs[row], QR_inds[row])
+                    Q_, P_ = polar(Envs[row], QR_inds[row]; kwargs...)
                     Q[row] = deepcopy(noprime(Q_))
                 end
                 AQinds     = IndexSet(findindex(A[row, col], "Site")) 
@@ -111,15 +112,15 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
             best_overlap = ratio
         end
         ratio > overlap_cutoff && break
-        iter > 500 && break
-        if iter > 10 && mod(iter, 5) == 0 && best_overlap < 0.6
+        iter += 1
+        iter > maxiter && break
+        #=if iter > 10 && mod(iter, 5) == 0 && best_overlap < 0.6
             for row in 1:Ny
                 salt    = randomITensor(inds(Q[row]))
                 Q[row] += salt/(scalar(dag(salt)*salt))
                 Q[row] /= sqrt(norm(Q[row])) 
             end
-        end
-        iter += 1
+        end=#
     end
     @info best_overlap
     return best_Q, best_R, next_col_inds, QR_inds, dummy_nexts

@@ -1,0 +1,2 @@
+source ~/.bashrc
+~/software/julia/julia -e 'using Pkg; Pkg.activate(".."); include("dmrg_gpu.jl")'
