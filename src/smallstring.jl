@@ -1,9 +1,6 @@
-<<<<<<< HEAD
-=======
 export convert,
        setindex,
        read
->>>>>>> 38e6b03... Added Base.read overload for SmallString, supporting format="cpp"
 
 const IntChar = UInt8
 const IntSmallString = UInt64
