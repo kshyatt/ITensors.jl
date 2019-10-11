@@ -111,7 +111,7 @@ function gaugeQR(A::PEPS, col::Int, side::Symbol; kwargs...)
             best_overlap = ratio
         end
         ratio > overlap_cutoff && break
-        iter > 500 && break
+        iter > 100 && break
         if iter > 10 && mod(iter, 5) == 0 && best_overlap < 0.6
             for row in 1:Ny
                 salt    = randomITensor(inds(Q[row]))
