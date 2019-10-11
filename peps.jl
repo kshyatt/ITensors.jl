@@ -1086,8 +1086,7 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
         localH = sum(Hs)
     end
     initial_E = real(scalar(A[row, col] * deepcopy(localH) * dag(A[row, col])'))
-    @info "Initial energy at row $row col $col : $(initial_E/(initial_N*Nx*Ny))"
-    @info "Initial norm at row $row col $col : $initial_N"
+    @info "Initial energy at row $row col $col : $(initial_E/(initial_N*Nx*Ny)) and norm : $initial_N"
     #println("Initial energy at row $row col $col : $(initial_E) and  norm : $initial_N")
     @debug "\tBeginning davidson for col $col row $row"
     λ, new_A = davidson(localH, A[row, col]; miniter=2, kwargs...)
@@ -1099,8 +1098,7 @@ function optimizeLocalH(A::PEPS, L::Environments, R::Environments, AncEnvs, H, r
         new_E = real(scalar(new_A * localH * dag(new_A)'))
         new_N = real(scalar(new_A * N * dag(new_A)'))
     end
-    @info "Optimized energy at row $row col $col : $(new_E/(new_N*Nx*Ny))"
-    @info "Optimized norm at row $row col $col : $new_N"
+    @info "Optimized energy at row $row col $col : $(new_E/(new_N*Nx*Ny)) and norm : $new_N"
     #println("Optimized energy at row $row col $col : $(new_E) and  norm : $new_N")
         if row < Ny
             @debug "\tRestoring intraColumnGauge for col $col row $row"
@@ -1233,7 +1231,7 @@ function leftwardSweep(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environment
         @debug "Sweeping col $col"
         if sweep >= simple_update_cutoff
             @timeit "sweep" begin
-                #A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
+                A = sweepColumn(A, Ls[col - 1], R, H, col; kwargs...)
             end
         end
         if sweep < simple_update_cutoff
