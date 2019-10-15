@@ -568,14 +568,14 @@ end
 
 function readCpp!(io::IO,T::ITensor;kwargs...)
   T.inds = read(io,IndexSet;kwargs...)
-  read(io,12) # ignore scale factor
+  scale  = read(io,12) # ignore scale factor
   storage_type = read(io,Int32) # see StorageType enum above
   if storage_type==0 # Null
     T.store = Dense{Nothing}()
   elseif storage_type==1  # DenseReal
-    T.store = read(io,Dense{Float64};kwargs...)
+      T.store = read(io,Dense{Float64, Vector{Float64}};kwargs...)
   elseif storage_type==2  # DenseCplx
-    T.store = read(io,Dense{ComplexF64};kwargs...)
+      T.store = read(io,Dense{ComplexF64, Vector{ComplexF64}};kwargs...)
   elseif storage_type==3  # Combiner
     T.store = CombinerStorage(T.inds[1])
   #elseif storage_type==4  # DiagReal

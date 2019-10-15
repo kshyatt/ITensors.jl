@@ -268,7 +268,8 @@ function Base.read(io::IO,::Type{TagSet}; kwargs...)
     for n=1:4
       t = read(io,Tag;kwargs...)
       if t != Tag()
-        ntags = _addtag_ordered!(mstore,ntags,IntSmallString(t))
+        it = IntSmallString(t)
+        ntags = _addtag_ordered!(mstore,ntags,it)
       end
     end
     plev = convert(Int,read(io,Int32))

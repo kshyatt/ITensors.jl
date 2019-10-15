@@ -49,6 +49,12 @@ function SmallString(i::IntSmallString)
   SmallString(unsafe_load(convert(Ptr{SmallStringStorage},pointer_from_objref(MVector{1,IntSmallString}(ntoh(i))))))
 end
 
+
+function IntSmallString(s::SmallString)
+  return cast_to_uint64(s.data)
+end
+
+
 # Cast to IntSmallString:
 function cast_to_uint64(a)
   return ntoh(unsafe_load(convert(Ptr{IntSmallString},pointer_from_objref(MSmallStringStorage(a)))))

@@ -411,17 +411,17 @@ function storage_polar(Astore::Dense{S, T},
   return (Qis,Qstore,Pis,Pstore)
 end
 
-function storage_exp(As::Dense{T}, Lis,Ris; hermitian=false) where {T}
+function storage_exp(As::Dense{T, S}, Lis,Ris; hermitian=false) where {T, S}
   expAdata = ( hermitian ? Array(exp(Hermitian(reshape(data(As),dim(Lis),dim(Ris))))) :
                            exp(reshape(data(As),dim(Lis),dim(Ris))) )
-  return Dense{T}(vec(expAdata))
+  return Dense{T, S}(vec(expAdata))
 end
 
-function Base.read(io::IO,::Type{Dense{T}};kwargs...) where {T}
+function Base.read(io::IO,::Type{Dense{T, S}};kwargs...) where {T, S}
   format = get(kwargs,:format,"hdf5")
   if format=="cpp"
     size = read(io,UInt64)
-    D = Dense{T}(size)
+    D = Dense{T, S}(size)
     read!(io,D.data)
   else
     throw(ArgumentError("read ITensor: format=$format not supported"))
