@@ -156,7 +156,7 @@ getDirectional(ops::Vector{Operator}, dir::Op_Type) = collect(filter(x->x.dir==d
 function spinI(s::Index; is_gpu::Bool=false)::ITensor
     I_data      = is_gpu ? CuArrays.zeros(Float64, dim(s), dim(s)) : zeros(Float64, dim(s), dim(s))
     idi         = diagind(I_data, 0)
-    I_data[idi] = CuArrays.ones(Float64, dim(s))
+    I_data[idi] = is_gpu ? CuArrays.ones(Float64, dim(s)) : ones(Float64, dim(s))
     I           = is_gpu ? cuITensor( vec(I_data), IndexSet(s, s') ) : ITensor(vec(I_data), IndexSet(s, s'))
     return I
 end
@@ -166,7 +166,6 @@ function makeH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
     Z = ITensor(s, s')
     Z[s(1), s'(1)] = 0.5
     Z[s(2), s'(2)] = -0.5
-    Ident = spinI(s)
     P = ITensor(s, s')
     M = ITensor(s, s')
     P[s(1), s'(2)] = 1.0
