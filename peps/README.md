@@ -61,3 +61,28 @@ All the simulations I've conducted were on the rusty cluster at the Simons Found
 To use `nvprof` on the PEPS code, you can run `prof_run.jl` (and mess around with parameters in that file):
 
 `nvprof julia-1.4 -e 'using Pkg; Pkg.activate("."); include("prof_run.jl")'`
+
+# DMRG
+
+The DMRG code can be found in the `prof/` folder. These two example DMRG codes were modified from CPU only ones in `benchmark/`. Examples of how to run them are in the `runner` scripts. For example, here is the output of the `2ddmrg_gpu_runner`
+on our cluster:
+
+```
+Activating environment at `~/projects/ITensors/Project.toml`
+After sweep 1 energy=-36.122895185750 maxLinkDim=4 time=8.241
+After sweep 2 energy=-41.011003343895 maxLinkDim=16 time=2.779
+After sweep 3 energy=-44.048843621536 maxLinkDim=64 time=17.389
+After sweep 4 energy=-44.484327192948 maxLinkDim=256 time=190.736
+After sweep 5 energy=-44.559161373677 maxLinkDim=400 time=764.369
+After sweep 6 energy=-44.563240537317 maxLinkDim=500 time=1144.768
+Time to do DMRG on CPU: 2147.086442509
+After sweep 1 energy=-40.552049646455 maxLinkDim=10 time=40.198
+After sweep 2 energy=-44.208348798560 maxLinkDim=100 time=8.371
+After sweep 3 energy=-44.484373071219 maxLinkDim=200 time=20.851
+After sweep 4 energy=-44.549936218533 maxLinkDim=300 time=62.029
+After sweep 5 energy=-44.560654498554 maxLinkDim=400 time=116.575
+After sweep 6 energy=-44.563248632726 maxLinkDim=500 time=182.301
+Time to do DMRG on GPU: 434.903995371
+```
+
+We can see that the GPU gets good energies *and* is much faster. This `maxLinkDim` is another name for `chi` from the PEPS code.
