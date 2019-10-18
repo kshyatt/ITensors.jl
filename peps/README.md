@@ -57,3 +57,7 @@ The code outputs to `STDOUT` the energy at each sweep and, at the end of run, th
 energy to converge, and for larger systems with larger `chi` you will be waiting a *long* time for the CPU to finish (it's a big reason we're so excited about the GPU results!).
 
 All the simulations I've conducted were on the rusty cluster at the Simons Foundation. The nodes I ran the code on have 32GB V100 GPUs with 36 core Skylake CPUs (I can get more detailed information if it would be helpful).
+
+To use `nvprof` on the PEPS code, you can run `prof_run.jl` (and mess around with parameters in that file):
+
+`nvprof julia-1.4 -e 'using Pkg; Pkg.activate("."); include("prof_run.jl")'`
