@@ -1,4 +1,4 @@
-using TimerOutputs
+using TimerOutputs, Statistics
 include("peps.jl")
 function doSweeps(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environments}, H; mindim::Int=1, maxdim::Int=1, simple_update_cutoff::Int=4, sweep_count::Int=10, cutoff::Float64=0.)
     Ls, tL, bytes, gctime, memallocs = @timed buildLs(A, H; mindim=mindim, maxdim=maxdim)
@@ -17,6 +17,19 @@ function doSweeps(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environments}, H
             end
             Ls = buildLs(A, H; mindim=mindim, maxdim=maxdim)
             Rs = buildRs(A, H; mindim=mindim, maxdim=maxdim)
+        end
+        if sweep > simple_update_cutoff && iseven(sweep)
+            A_ = deepcopy(A)
+            L_s = buildLs(A_, H; mindim=mindim, maxdim=maxdim)
+            R_s = buildRs(A_, H; mindim=mindim, maxdim=maxdim)
+            x_mag = measureXmag(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
+            z_mag = measureZmag(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
+            display(z_mag)
+            println()
+            v_mag = measureSmagVertical(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
+            display(v_mag)
+            println()
+            #h_mag = measureSmagHorizontal(A, Ls, Rs; mindim=mindim, maxdim=maxdim)
         end
     end
     return tL, tR
