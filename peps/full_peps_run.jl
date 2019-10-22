@@ -18,18 +18,14 @@ function doSweeps(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Environments}, H
             Ls = buildLs(A, H; mindim=mindim, maxdim=maxdim)
             Rs = buildRs(A, H; mindim=mindim, maxdim=maxdim)
         end
-        if sweep > simple_update_cutoff && iseven(sweep)
+        if sweep == sweep_count 
             A_ = deepcopy(A)
             L_s = buildLs(A_, H; mindim=mindim, maxdim=maxdim)
             R_s = buildRs(A_, H; mindim=mindim, maxdim=maxdim)
             x_mag = measureXmag(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
             z_mag = measureZmag(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
-            display(z_mag)
-            println()
             v_mag = measureSmagVertical(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
-            display(v_mag)
-            println()
-            #h_mag = measureSmagHorizontal(A, Ls, Rs; mindim=mindim, maxdim=maxdim)
+            h_mag = measureSmagHorizontal(A_, L_s, R_s; mindim=mindim, maxdim=maxdim)
         end
     end
     return tL, tR

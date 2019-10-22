@@ -98,13 +98,13 @@ function measureSmagHorizontal(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Env
     measuredSH = zeros(Nx, Ny)
     for col in 1:Nx-1
         SHs = Operator[]
-        for row in 1:Ny-1
+        for row in 1:Ny
             push!(SHs, Operator([row=>col, row=>col+1], [0.5*P, M], s, Horizontal))
             push!(SHs, Operator([row=>col, row=>col+1], [0.5*M, P], s, Horizontal))
             push!(SHs, Operator([row=>col, row=>col+1], [Z, Z], s, Horizontal))
         end
         A = intraColumnGauge(A, col; kwargs...)
-        tR = col == Nx - 1 ? dummyEnv : Rs[col+1]
+        tR = Rs[col+1]
         tL = col == 1      ? dummyEnv : Ls[col-1]
         AI = makeAncillaryIs(A, tL, tR, col)
         AS = makeAncillarySide(A, tR, tL, SHs, col, :right)
