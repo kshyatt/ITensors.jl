@@ -75,9 +75,10 @@ function measureSmagVertical(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Envir
         AV = makeAncillaryVs(A, tL, tR, SVs, col)
         vTs = verticalTerms(A, tL, tR, (above=AI,), (above=AV,), SVs, 1, col) 
         N  = buildN(A, tL, tR, (above=AI,), 1, col)
+        nrm = scalar(A[1, col] * N * dag(A[1, col]'))
         for (vi, vT) in enumerate(vTs)
             row = SVs[vi].sites[1][1]
-            measuredSV[row, col] = scalar(A[1, col] * vT * dag(A[1, col]'))/scalar(A[1, col] * N * dag(A[1, col]'))
+            measuredSV[row, col] += scalar(A[1, col] * vT * dag(A[1, col]'))/nrm
         end
     end
     return measuredSV
@@ -110,9 +111,10 @@ function measureSmagHorizontal(A::PEPS, Ls::Vector{Environments}, Rs::Vector{Env
         AS = makeAncillarySide(A, tR, tL, SHs, col, :right)
         hTs = connectRightTerms(A, tL, tR, (above=AI,), (above=AS,), SHs, 1, col) 
         N  = buildN(A, tL, tR, (above=AI,), 1, col)
+        nrm = scalar(A[1, col] * N * dag(A[1, col]'))
         for (hi, hT) in enumerate(hTs)
             row = SHs[hi].sites[1][1]
-            measuredSH[row, col] = scalar(A[1, col] * hT * dag(A[1, col]'))/scalar(A[1, col] * N * dag(A[1, col]'))
+            measuredSH[row, col] += scalar(A[1, col] * hT * dag(A[1, col]'))/nrm
         end
     end
     return measuredSH
