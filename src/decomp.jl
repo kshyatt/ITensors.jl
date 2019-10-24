@@ -98,7 +98,7 @@ end
 import LinearAlgebra.qr
 function qr(A::ITensor,
             Linds...; kwargs...)
-  A,Lis,Ris = _permute_for_factorize(A,Linds...)
+  A,Lis,Ris             = _permute_for_factorize(A,Linds...)
   Qis,Qstore,Pis,Pstore = storage_qr(store(A),Lis,Ris; kwargs...)
   Q = ITensor(Qis,Qstore)
   R = ITensor(Pis,Pstore)

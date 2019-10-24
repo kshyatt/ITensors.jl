@@ -358,7 +358,7 @@ norm(T::ITensor) = storage_norm(store(T))
 dag(T::ITensor) = ITensor(storage_dag(store(T),inds(T))...)
 
 function permute(T::ITensor,permTinds)
-  permTis = IndexSet(permTinds)
+  permTis    = IndexSet(permTinds)
   permTstore = typeof(store(T))(dim(T))
   storage_permute!(permTstore,permTis,store(T),inds(T))
   return ITensor(permTis,permTstore)

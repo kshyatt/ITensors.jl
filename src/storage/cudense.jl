@@ -1,5 +1,11 @@
 Dense{T, SA}(x::Dense{T, SB}) where {T<:Number, SA<:CuArray, SB<:Array} = Dense{T, S}(CuArray(x))
 Dense{T, SA}(x::Dense{T, SB}) where {T<:Number, SA<:Array, SB<:CuArray} = Dense{T, S}(collect(x.data))
+Dense{T, S}(size::Integer) where {T, S<:CuArray{<:T}} = Dense{T, S}(CuArrays.zeros(T, size))
+function Dense{T, S}(x::T, size::Integer) where {T, S<:CuArray{<:T}}
+    arr = CuArray{T}(undef, size)
+    fill!(arr, x)
+    Dense{T, S}(arr)
+end
 Base.collect(x::Dense{T, S}) where {T<:Number, S<:CuArray} = Dense{T, Vector{T}}(collect(x.data))
 
 *(D::Dense{T, AT},x::S) where {T,AT<:CuArray,S<:Number} = Dense{promote_type(T,S), CuVector{promote_type(T,S)}}(x .* data(D))
@@ -220,17 +226,17 @@ end
 
 function storage_qr(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet; kwargs...) where {T<:CuArray, S<:Number}
   tags::TagSet = get(kwargs,:tags,"Link,u")
-  dim_left = dim(Lis)
-  dim_right = dim(Ris)
-  dQR = qr!(reshape(data(Astore),dim_left,dim_right))
-  MQ = dQR.Q
-  MP = dQR.R
-  dim_middle = min(dim_left,dim_right)
-  u = Index(dim_middle,tags)
+  dim_left     = dim(Lis)
+  dim_right    = dim(Ris)
+  dQR          = qr!(reshape(data(Astore),dim_left,dim_right))
+  MQ           = dQR.Q
+  MP           = dQR.R
+  dim_middle   = min(dim_left,dim_right)
+  u            = Index(dim_middle,tags)
   #Must call Matrix() on MQ since the QR decomposition outputs a sparse
   #form of the decomposition
-  Qis,Qstore = IndexSet(Lis...,u),Dense{S, T}(vec(CuArray(MQ)))
-  Pis,Pstore = IndexSet(u,Ris...),Dense{S, T}(vec(CuArray(MP)))
+  Qis,Qstore   = IndexSet(Lis...,u),Dense{S, T}(vec(CuArray(MQ)))
+  Pis,Pstore   = IndexSet(u,Ris...),Dense{S, T}(vec(MP))
   return (Qis,Qstore,Pis,Pstore)
 end
 

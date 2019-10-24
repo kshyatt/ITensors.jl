@@ -48,6 +48,7 @@ end
 include("environments.jl")
 include("ancillaries.jl")
 include("gauge.jl")
+include("observables.jl")
 
 function cudelt(left::Index, right::Index)
     d_data   = CuArrays.zeros(Float64, dim(left), dim(right))
@@ -281,15 +282,15 @@ function makeCuH_XXZ(Nx::Int, Ny::Int, J::Real; pinning::Bool=false)
     J_ = 1.
     @inbounds for row in 1:Ny
         op = isodd(row-1) ? (J_/2.0) * Z : (-J_/2.0) * Z   
-        push!(H[row, 1], Operator([row=>1], [op], s, Field))    
+        push!(H[row, 1], Operator([row=>1], [cuITensor(op)], s, Field))    
         op = isodd(row-1) ? (-J_/2.0) * Z : (J_/2.0) * Z   
-        push!(H[row, Nx], Operator([row=>Nx], [op], s, Field))    
+        push!(H[row, Nx], Operator([row=>Nx], [cuITensor(op)], s, Field))    
     end
     @inbounds for col in 2:Nx-1
         op = isodd(col-1) ? (-J_/2.0) * Z : (J_/2.0) * Z   
-        push!(H[Ny, col], Operator([Ny=>col], [op], s, Field))    
+        push!(H[Ny, col], Operator([Ny=>col], [cuITensor(op)], s, Field))    
         op = isodd(col-1) ? (J_/2.0) * Z : (-J_/2.0) * Z   
-        push!(H[1, col], Operator([1=>col], [op], s, Field))    
+        push!(H[1, col], Operator([1=>col], [cuITensor(op)], s, Field))    
     end
     return H
 end
@@ -386,8 +387,8 @@ function sum_rows_in_col(A::PEPS, L::Environments, R::Environments, H::Operator,
         ops[op_ind] = replaceindex!(ops[op_ind], H.site_ind, as)
         ops[op_ind] = replaceindex!(ops[op_ind], H.site_ind', as')
     end
-    nwrs  = ITensor(1.0)
-    nwrs_ = ITensor(1.0)
+    nwrs  = is_gpu ? cuITensor(1.0) : ITensor(1.0)
+    nwrs_ = is_gpu ? cuITensor(1.0) : ITensor(1.0)
     Hterm = ITensor()
     if row == op_row_a
         Hterm = IA
@@ -545,6 +546,7 @@ function verticalTerms(A::PEPS, L::Environments, R::Environments, AI, AV, H, row
     is_gpu = !(data(store(A[1,1])) isa Array)
     vTerms = ITensor[]#fill(ITensor(), length(H))
     AAinds = IndexSet(inds(A[row, col]), inds(A[row, col]'))
+    dummy  = is_gpu ? cuITensor(1.0) : ITensor(1.0) 
     @inbounds for opcode in 1:length(H)
         thisVert = is_gpu ? cuITensor(1.0) : ITensor(1.0)
         op_row_a = H[opcode].sites[1][1]
@@ -553,10 +555,10 @@ function verticalTerms(A::PEPS, L::Environments, R::Environments, AI, AV, H, row
             local V, I
             if op_row_a > row
                 V = AV[:above][opcode][end - row]
-                I = row > 1 ? AI[:below][row - 1] : ITensor(1.0)
+                I = row > 1 ? AI[:below][row - 1] : dummy 
             elseif op_row_b < row
                 V = AV[:below][opcode][row - op_row_b]
-                I = row < Ny ? AI[:above][end - row] : ITensor(1.0)
+                I = row < Ny ? AI[:above][end - row] : dummy
             end
             thisVert *= V
             if col > 1
@@ -574,8 +576,8 @@ function verticalTerms(A::PEPS, L::Environments, R::Environments, AI, AV, H, row
         elseif row == op_row_a
             low_row  = op_row_a - 1
             high_row = op_row_b
-            AIL = low_row > 0 ? AI[:below][low_row] : ITensor(1)
-            AIH = high_row < Ny ? AI[:above][end - high_row] : ITensor(1)
+            AIL = low_row > 0 ? AI[:below][low_row] : dummy 
+            AIH = high_row < Ny ? AI[:above][end - high_row] : dummy 
             thisVert = AIH
             if col > 1
                 ci  = commonindex(A[op_row_b, col], A[op_row_b, col-1])
@@ -609,8 +611,8 @@ function verticalTerms(A::PEPS, L::Environments, R::Environments, AI, AV, H, row
         elseif row == op_row_b
             low_row  = op_row_a - 1
             high_row = op_row_b
-            AIL = low_row > 0 ? AI[:below][low_row] : ITensor(1)
-            AIH = high_row < Ny ? AI[:above][end - high_row] : ITensor(1)
+            AIL = low_row > 0 ? AI[:below][low_row] : dummy 
+            AIH = high_row < Ny ? AI[:above][end - high_row] : dummy 
             thisVert = AIL
             if col > 1
                 ci  = commonindex(A[op_row_a, col], A[op_row_a, col-1])
@@ -655,18 +657,19 @@ function fieldTerms(A::PEPS, L::Environments, R::Environments, AI, AF, H, row::I
     Ny, Nx = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
     fTerms = fill(ITensor(), length(H))
+    dummy  = is_gpu ? cuITensor(1.0) : ITensor(1.0) 
     AAinds = IndexSet(inds(A[row, col]), inds(A[row, col]'))
     @inbounds for opcode in 1:length(H)
-        thisField = ITensor(1);
+        thisField = is_gpu ? cuITensor(1) : ITensor(1);
         op_row = H[opcode].sites[1][1];
         if op_row != row
             local F, I
             if op_row > row
                 F = AF[:above][opcode][end - row]
-                I = row > 1 ? AI[:below][row - 1] : ITensor(1.0)
+                I = row > 1 ? AI[:below][row - 1] : dummy
             else
                 F = AF[:below][opcode][row - 1]
-                I = row < Ny ? AI[:above][end - row] : ITensor(1.0)
+                I = row < Ny ? AI[:above][end - row] : dummy 
             end
             thisField *= F
             if col > 1
@@ -682,8 +685,8 @@ function fieldTerms(A::PEPS, L::Environments, R::Environments, AI, AF, H, row::I
         else
             low_row = op_row - 1
             high_row = op_row
-            AIL = low_row > 0 ? AI[:below][low_row] : ITensor(1.0)
-            AIH = high_row < Ny ? AI[:above][end - high_row] : ITensor(1.0)
+            AIL = low_row > 0 ? AI[:below][low_row] : dummy 
+            AIH = high_row < Ny ? AI[:above][end - high_row] : dummy 
             thisField = AIL
             if col > 1
                 ci  = commonindex(A[row, col], A[row, col-1])
@@ -714,21 +717,22 @@ function connectLeftTerms(A::PEPS, L::Environments, R::Environments, AI, AL, H, 
     is_gpu = !(data(store(A[1,1])) isa Array)
     lTerms = fill(ITensor(), length(H))
     AAinds = IndexSet(inds(A[row, col]), inds(A[row, col]'))
+    dummy  = is_gpu ? cuITensor(1.0) : ITensor(1.0) 
     @inbounds for opcode in 1:length(H)
         op_row_b = H[opcode].sites[2][1]
         op_b = copy(H[opcode].ops[2])
         as   = findindex(A[op_row_b, col], "Site")
         op_b = replaceindex!(op_b, H[opcode].site_ind, as)
         op_b = replaceindex!(op_b, H[opcode].site_ind', as')
-        thisHori = ITensor(1)
+        thisHori = is_gpu ? cuITensor(1) : ITensor(1)
         if op_row_b != row
             local ancL, I
             if op_row_b > row
                 ancL = AL[:above][opcode][end - row]
-                I = row > 1 ? AL[:below][opcode][row - 1] : ITensor(1)
+                I = row > 1 ? AL[:below][opcode][row - 1] : dummy 
             else
                 ancL = AL[:below][opcode][row - 1]
-                I = row < Ny ? AL[:above][opcode][end - row] : ITensor(1)
+                I = row < Ny ? AL[:above][opcode][end - row] : dummy
             end
             thisHori = ancL
             thisHori *= L.InProgress[row, opcode]
@@ -768,21 +772,22 @@ function connectRightTerms(A::PEPS, L::Environments, R::Environments, AI, AR, H,
     is_gpu = !(data(store(A[1,1])) isa Array)
     rTerms = fill(ITensor(), length(H))
     AAinds = IndexSet(inds(A[row, col]), inds(A[row, col]'))
+    dummy  = is_gpu ? cuITensor(1.0) : ITensor(1.0) 
     @inbounds for opcode in 1:length(H)
         op_row_a = H[opcode].sites[1][1]
         op_a = copy(H[opcode].ops[1])
         as   = findindex(A[op_row_a, col], "Site")
         op_a = replaceindex!(op_a, H[opcode].site_ind, as)
         op_a = replaceindex!(op_a, H[opcode].site_ind', as')
-        thisHori = ITensor(1)
+        thisHori = is_gpu ? cuITensor(1.0) : ITensor(1.0)
         if op_row_a != row
             local ancR, I
             if op_row_a > row
                 ancR = AR[:above][opcode][end - row]
-                I = row > 1 ? AR[:below][opcode][row - 1] : ITensor(1)
+                I = row > 1 ? AR[:below][opcode][row - 1] : dummy 
             else
                 ancR = AR[:below][opcode][row - 1]
-                I = row < Ny ? AR[:above][opcode][end - row] : ITensor(1)
+                I = row < Ny ? AR[:above][opcode][end - row] : dummy 
             end
             thisHori = ancR
             thisHori *= R.InProgress[row, opcode]
@@ -998,10 +1003,10 @@ end
 function buildAncs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
-    
+    dummy  = is_gpu ? cuITensor(1.0) : ITensor(1.0) 
     @debug "\tMaking ancillary identity terms for col $col"
     Ia = makeAncillaryIs(A, L, R, col)
-    Ib = fill(ITensor(1.), Ny)
+    Ib = fill(dummy, Ny)
     Is = (above=Ia, below=Ib)
 
     @debug "\tMaking ancillary vertical terms for col $col"

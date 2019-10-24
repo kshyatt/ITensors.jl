@@ -14,8 +14,9 @@ end
 function makeAncillaryIs(A::PEPS, L::Environments, R::Environments, col::Int)
     Ny, Nx   = size(A)
     is_gpu   = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     ops = map(x -> spinI(x; is_gpu=is_gpu), col_site_inds)
     AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
@@ -26,8 +27,9 @@ end
 function makeAncillaryIsBelow(A::PEPS, L::Environments, R::Environments, col::Int)
     Ny, Nx   = size(A)
     is_gpu   = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     ops = map(x -> spinI(x; is_gpu=is_gpu), col_site_inds)
     AAs = [prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx) for row in 1:Ny]
@@ -37,11 +39,12 @@ end
 function updateAncillaryIs(A::PEPS, Ibelow::Vector{ITensor}, L::Environments, R::Environments, row::Int, col::Int )
     Ny, Nx  = size(A)
     is_gpu  = !(data(store(A[1,1])) isa Array)
-    left_A  = col > 1 ? A[row, col - 1] : ITensor(1.0)
-    right_A = col < Nx ? A[row, col + 1] : ITensor(1.0)
+    dummy   = is_gpu   ? cuITensor(1.0)  : ITensor(1.0) 
+    left_A  = col > 1  ? A[row, col - 1] : dummy
+    right_A = col < Nx ? A[row, col + 1] : dummy
     op      = spinI(findindex(A[row, col], "Site"); is_gpu=is_gpu)
     AA      = prepareRow(A[row, col], op, left_A, right_A, L.I[row], R.I[row], col, Nx)
-    AA     *= row > 1 ? Ibelow[row - 1] : ITensor(1.0)
+    AA     *= row > 1  ? Ibelow[row - 1] : dummy 
     Ibelow[row] = AA
     return Ibelow
 end
@@ -49,8 +52,9 @@ end
 function makeAncillaryFs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx   = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     Fabove   = fill(Vector{ITensor}(), length(H))
     for opcode in 1:length(H)
@@ -67,8 +71,9 @@ end
 function updateAncillaryFs(A::PEPS, Fbelow, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, row::Int, col::Int)
     Ny, Nx   = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     for opcode in 1:length(H)
         op_row      = H[opcode].sites[1][1]
@@ -89,9 +94,10 @@ end
 
 function makeAncillaryVs(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx   = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    is_gpu   = !(data(store(A[1,1])) isa Array)
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     Vabove   = fill(Vector{ITensor}(), length(H))
     for opcode in 1:length(H)
@@ -110,9 +116,10 @@ end
 
 function makeAncillaryVsBelow(A::PEPS, L::Environments, R::Environments, H, col::Int)
     Ny, Nx   = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    is_gpu   = !(data(store(A[1,1])) isa Array)
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     Vbelow   = fill(Vector{ITensor}(), length(H))
     for opcode in 1:length(H)
@@ -132,8 +139,9 @@ end
 function updateAncillaryVs(A::PEPS, Vbelow, Ibelow::Vector{ITensor}, L::Environments, R::Environments, H, row::Int, col::Int)
     Ny, Nx   = size(A)
     is_gpu   = !(data(store(A[1,1])) isa Array)
-    left_As  = [col > 1 ? A[row, col - 1] : ITensor(1) for row in 1:Ny] 
-    right_As = [col < Nx ? A[row, col + 1] : ITensor(1) for row in 1:Ny]
+    dummy    = is_gpu    ? cuITensor(1.0)  : ITensor(1.0) 
+    left_As  = [col > 1  ? A[row, col - 1] : dummy for row in 1:Ny] 
+    right_As = [col < Nx ? A[row, col + 1] : dummy for row in 1:Ny]
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     for opcode in 1:length(H)
         op_row_a      = H[opcode].sites[1][1]
@@ -147,7 +155,7 @@ function updateAncillaryVs(A::PEPS, Vbelow, Ibelow::Vector{ITensor}, L::Environm
             AA  = prepareRow(A[row, col], ops[row], left_As[row], right_As[row], L.I[row], R.I[row], col, Nx)
             push!(Vbelow[opcode], Vbelow[opcode][end] * AA)
         elseif op_row_b == row
-            Ib  = op_row_a > 1 ? Ibelow[op_row_a - 1] : ITensor(1)
+            Ib  = op_row_a > 1 ? Ibelow[op_row_a - 1] : dummy
             AA  = prepareRow(A[op_row_a, col], ops[op_row_a], left_As[op_row_a], right_As[op_row_a], L.I[op_row_a], R.I[op_row_a], col, Nx)
             AA *= prepareRow(A[op_row_b, col], ops[op_row_b], left_As[op_row_b], right_As[op_row_b], L.I[op_row_b], R.I[op_row_b], col, Nx)
             push!(Vbelow[opcode], AA*Ib)
@@ -182,7 +190,7 @@ end
 
 function makeAncillarySideBelow(A::PEPS, EnvIP::Environments, EnvIdent::Environments, H, col::Int, side::Symbol)
     Ny, Nx   = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
+    is_gpu   = !(data(store(A[1,1])) isa Array)
     col_site_inds = [findindex(x, "Site") for x in A[:, col]]
     Sbelow   = fill(Vector{ITensor}(), length(H))
     next_col = side == :left ? col + 1 : col - 1
