@@ -5,7 +5,7 @@ function initQs( A::PEPS, col::Int, next_col::Int; kwargs...)
     maxdim::Int = get(kwargs, :maxdim, 1)
     Q         = MPO(Ny, deepcopy(A[:, col]), 0, Ny+1)
     prev_col  = next_col > col ? col - 1 : col + 1
-    A_r_inds = [commonindex(A[row, col], A[row, next_col]) for row in 1:Ny]
+    A_r_inds  = [commonindex(A[row, col], A[row, next_col]) for row in 1:Ny]
     QR_inds   = [Index(dim(A_r_inds[row]), "Site,QR,c$col,r$row") for row in 1:Ny]
     A_up_inds = [commonindex(A[row, col], A[row+1, col]) for row in 1:Ny-1]
     Q_up_inds = [Index(dim(A_up_inds[row]), "Link,u,Qup$row") for row in 1:Ny-1]

@@ -9,7 +9,7 @@ function buildEdgeEnvironment(A::PEPS, H, left_H_terms, next_combiners::Vector{I
     is_gpu       = !(data(store(A[1,1])) isa Array)
     up_combiners = Vector{ITensor}(undef, Ny-1)
     fake_next_combiners = Vector{ITensor}(undef, Ny)
-    fake_prev_combiners = fill(ITensor(1.0), Ny)
+    fake_prev_combiners = is_gpu ? fill(cuITensor(1.0), Ny) : fill(ITensor(1.0), Ny)
     I_mpo, fake_next_combiners, up_combiners = buildNewI(A, col, fake_prev_combiners, side)
     orthogonalize!(I_mpo, 1; kwargs...)
     @debug "Built new I"
@@ -117,7 +117,7 @@ function buildNewVerticals(A::PEPS, previous_combiners::Vector, next_combiners::
     ops[vertical_row_a] = replaceindex!(ops[vertical_row_a], H.site_ind', col_site_inds[vertical_row_a]') 
     ops[vertical_row_b] = replaceindex!(copy(H.ops[2]), H.site_ind, col_site_inds[vertical_row_b])
     ops[vertical_row_b] = replaceindex!(ops[vertical_row_b], H.site_ind', col_site_inds[vertical_row_b]') 
-    internal_cmb_u      = vcat(1.0, up_combiners, 1.0)
+    internal_cmb_u      = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0)) 
     AAs                 = [ A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
     return MPO(Ny, AAs, 0, Ny+1)
 end
@@ -125,14 +125,20 @@ end
 function buildNewFields(A::PEPS, previous_combiners::Vector, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, H, col::Int)::MPO
     Ny, Nx = size(A)
     is_gpu = !(data(store(A[1,1])) isa Array)
-    col_site_inds       = [findindex(A[row, col], "Site") for row in 1:Ny]
-    is_gpu              = !(data(store(A[1,1])) isa Array)
-    ops                 = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
+    col_site_inds  = [findindex(A[row, col], "Site") for row in 1:Ny]
+    is_gpu         = !(data(store(A[1,1])) isa Array)
+    ops            = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
     field_row      = H.sites[1][1]
     ops[field_row] = replaceindex!(copy(H.ops[1]), H.site_ind, col_site_inds[field_row]) 
     ops[field_row] = replaceindex!(ops[field_row], H.site_ind', col_site_inds[field_row]') 
-    internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    AAs            = [ A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
+    #internal_cmb_u = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0)) 
+    AAs            = Vector{ITensor}(undef, Ny)
+    AAs[1] = A[1, col] * ops[1] * prime(dag(A[1, col])) * next_combiners[1] * up_combiners[1] * previous_combiners[1]
+    for row in 2:Ny-1
+        AAs[row] = A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * previous_combiners[row] * up_combiners[row-1] * up_combiners[row]
+    end
+    AAs[Ny] = A[Ny, col] * ops[Ny] * prime(dag(A[Ny, col])) * next_combiners[Ny] * previous_combiners[Ny] * up_combiners[Ny-1]
+    #AAs            = [ A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * previous_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny ]
     return MPO(Ny, AAs, 0, Ny+1)
 end
 
@@ -165,8 +171,14 @@ function generateEdgeDanglingBonds(A::PEPS, up_combiners::Vector{ITensor}, H, si
     ops            = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
     ops[op_row]    = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
     ops[op_row]    = replaceindex!(ops[op_row], H.site_ind', col_site_inds[op_row]') 
-    internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    this_IP        = [A[row, col] * ops[row] * prime(dag(A[row, col])) * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    #internal_cmb_u = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0)) 
+    #this_IP        = [A[row, col] * ops[row] * prime(dag(A[row, col])) * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    this_IP        = Vector{ITensor}(undef, Ny)
+    this_IP[1] = A[1, col] * ops[1] * prime(dag(A[1, col])) * up_combiners[1]
+    for row in 2:Ny-1
+        this_IP[row] = A[row, col] * ops[row] * prime(dag(A[row, col])) * up_combiners[row-1] * up_combiners[row]
+    end
+    this_IP[Ny] = A[Ny, col] * ops[Ny] * prime(dag(A[Ny, col])) * up_combiners[Ny-1]
     return this_IP;
 end
 
@@ -179,16 +191,22 @@ function generateNextDanglingBonds(A::PEPS, previous_combiners::Vector{ITensor},
     ops             = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
     ops[op_row]     = replaceindex!(copy(H_op), H.site_ind, col_site_inds[op_row]) 
     ops[op_row]     = replaceindex!(ops[op_row], H.site_ind', col_site_inds[op_row]') 
-    internal_cmb_u  = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0))
-    this_IP         = [A[row, col] * ops[row] * prime(dag(A[row, col])) * previous_combiners[row] * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    #internal_cmb_u  = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0))
+    #this_IP         = [A[row, col] * ops[row] * prime(dag(A[row, col])) * previous_combiners[row] * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    this_IP         = Vector{ITensor}(undef, Ny)
+    this_IP[1] = A[1, col] * ops[1] * prime(dag(A[1, col])) * previous_combiners[1] * next_combiners[1] * up_combiners[1]
+    for row in 2:Ny-1
+        this_IP[row] = A[row, col] * ops[row] * prime(dag(A[row, col])) * previous_combiners[row] * next_combiners[row] * up_combiners[row-1] * up_combiners[row]
+    end
+    this_IP[Ny] = A[Ny, col] * ops[Ny] * prime(dag(A[Ny, col])) * previous_combiners[Ny] * next_combiners[Ny] * up_combiners[Ny-1]
     in_progress_MPO = MPO(Ny, this_IP, 0, Ny+1)
     result          = applyMPO(in_progress_MPO, Ident; kwargs...)
     return ITensor[result[row]*next_combiners[row] for row in 1:Ny]
 end
 
 function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combiners::Vector{ITensor}, oldH, in_progress::Vector{ITensor}, side::Symbol, work_row::Int, col::Int; kwargs...)::Vector{ITensor}
-    Ny, Nx = size(A)
-    is_gpu = !(data(store(A[1,1])) isa Array)
+    Ny, Nx   = size(A)
+    is_gpu   = !(data(store(A[1,1])) isa Array)
     op_row_a = oldH.sites[1][1]
     op_row_b = oldH.sites[2][1]
     op       = side == :left ? oldH.ops[2] : oldH.ops[1]
@@ -197,9 +215,15 @@ function connectDanglingBonds(A::PEPS, next_combiners::Vector{ITensor}, up_combi
     ops            = ITensor[spinI(spin_ind; is_gpu=is_gpu) for spin_ind in col_site_inds] 
     ops[application_row] = replaceindex!(copy(op), oldH.site_ind, col_site_inds[application_row])
     ops[application_row] = replaceindex!(ops[application_row], oldH.site_ind', col_site_inds[application_row]')
-    internal_cmb_u = vcat(ITensor(1.0), up_combiners, ITensor(1.0))
+    #internal_cmb_u = is_gpu ? vcat(cuITensor(1.0), up_combiners, cuITensor(1.0)) : vcat(ITensor(1.0), up_combiners, ITensor(1.0)) 
     in_prog_mps    = MPS(Ny, in_progress, 0, Ny + 1)
-    this_IP        = [A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
+    this_IP        = Vector{ITensor}(undef, Ny)
+    this_IP[1] = A[1, col] * ops[1] * prime(dag(A[1, col])) * next_combiners[1] * up_combiners[1]
+    for row in 2:Ny-1
+        this_IP[row] = A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * up_combiners[row-1] * up_combiners[row]
+    end
+    this_IP[Ny] = A[Ny, col] * ops[Ny] * prime(dag(A[Ny, col])) * next_combiners[Ny] * up_combiners[Ny-1]
+    #this_IP        = [A[row, col] * ops[row] * prime(dag(A[row, col])) * next_combiners[row] * internal_cmb_u[row] * internal_cmb_u[row+1] for row in 1:Ny]
     if 0 < work_row < Ny + 1
         this_IP[work_row] = ops[work_row]
     end
