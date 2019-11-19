@@ -25,7 +25,7 @@ What you'll need:
     pkg> activate .
     ...
 
-    ITensors> dev CuArrays GPUArrays CUDAnative CUDAapi
+    ITensors> add CuArrays#4e73de2f1
 
     ITensors> build
     ```
